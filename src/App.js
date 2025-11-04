@@ -1,18 +1,29 @@
 import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import './App.css';
 
-// Import components
+// Import layout components
 import Header from './components/layouts/Header';
 import Sidebar from './components/layouts/Sidebar';
 import Footer from './components/layouts/Footer';
+
+// Import main pages
 import Dashboard from './pages/Dashboard';
 import Widget from './pages/Widget';
-import Inbox from './pages/Inbox'; // Import the Inbox component
+import Settings from './pages/Settings';
+import Inbox from './pages/Inbox';
+import AIAgent from './pages/AIAgent';
+
+// Import authentication pages
+import Login from './pages/Login';
+import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import Onboarding from './pages/Onboarding';
 
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState('Dashboard');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
@@ -22,9 +33,38 @@ function App() {
     setSidebarOpen(false);
   };
 
-  return (
-    <Router>
-      <div className="font-sans overflow-x-hidden bg-[#f7f8fa] min-h-screen">
+  const handleNavigate = (pageName) => {
+    setCurrentPage(pageName);
+    closeSidebar();
+  };
+
+  // Simple authentication check - this would be more robust in production
+  // with actual token validation and persistence
+  const checkAuth = () => {
+    // For demo purposes, just return the state value
+    return isAuthenticated;
+  };
+
+  // Protected route component - redirects to login if not authenticated
+  const ProtectedRoute = ({ children }) => {
+    if (!checkAuth()) {
+      return <Navigate to="/login" replace />;
+    }
+    return children;
+  };
+
+  // Auth route component - redirects to dashboard if already authenticated
+  const AuthRoute = ({ children }) => {
+    if (checkAuth()) {
+      return <Navigate to="/" replace />;
+    }
+    return children;
+  };
+
+  // Layout with sidebar and header for authenticated pages
+  const DashboardLayout = ({ children }) => {
+    return (
+      <>
         {/* Mobile Overlay */}
         <div 
           className={`md:hidden fixed inset-0 bg-black bg-opacity-50 z-30 transition-opacity duration-300 ${
@@ -34,21 +74,89 @@ function App() {
         />
         
         {/* Sidebar Component */}
-        <Sidebar isOpen={sidebarOpen} onClose={closeSidebar} />
+        <Sidebar 
+          isOpen={sidebarOpen} 
+          onClose={closeSidebar}
+          activePage={currentPage}
+          onNavigate={handleNavigate} 
+        />
         
         {/* Main Content */}
         <main className="md:ml-60">
           <Header toggleSidebar={toggleSidebar} title={currentPage} />
-          
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/widget" element={<Widget />} />
-            <Route path="/inbox" element={<Inbox />} />
-            {/* Add more routes here */}
-          </Routes>
-
+          {children}
           <Footer />
         </main>
+      </>
+    );
+  };
+
+  return (
+    <Router>
+      <div className="font-sans overflow-x-hidden bg-[#f7f8fa] min-h-screen">
+        <Routes>
+          {/* Auth Routes */}
+          <Route path="/login" element={
+            <AuthRoute>
+              <Login setIsAuthenticated={setIsAuthenticated} />
+            </AuthRoute>
+          } />
+          <Route path="/register" element={
+            <AuthRoute>
+              <Register />
+            </AuthRoute>
+          } />
+          <Route path="/forgot-password" element={
+            <AuthRoute>
+              <ForgotPassword />
+            </AuthRoute>
+          } />
+          <Route path="/onboarding" element={
+            <ProtectedRoute>
+              <Onboarding />
+            </ProtectedRoute>
+          } />
+
+          {/* Protected Dashboard Routes */}
+          <Route path="/" element={
+            <ProtectedRoute>
+              <DashboardLayout>
+                <Dashboard />
+              </DashboardLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/widget" element={
+            <ProtectedRoute>
+              <DashboardLayout>
+                <Widget />
+              </DashboardLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/settings/*" element={
+            <ProtectedRoute>
+              <DashboardLayout>
+                <Settings />
+              </DashboardLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/inbox" element={
+            <ProtectedRoute>
+              <DashboardLayout>
+                <Inbox />
+              </DashboardLayout>
+            </ProtectedRoute>
+          } />
+          <Route path="/ai-agent/*" element={
+            <ProtectedRoute>
+              <DashboardLayout>
+                <AIAgent />
+              </DashboardLayout>
+            </ProtectedRoute>
+          } />
+
+          {/* Catch-all - redirect to dashboard */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </div>
     </Router>
   );
