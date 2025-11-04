@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import authService from '../services/authService';
 
 const Register = ({ setIsAuthenticated }) => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    password: ''
+    password: '',
+    password_confirmation: '',
+    referral_code: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -29,15 +32,36 @@ const Register = ({ setIsAuthenticated }) => {
       return;
     }
 
+    // Check if passwords match
+    if (formData.password !== formData.password_confirmation) {
+      setError('Passwords do not match');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
-    // Simulate API call
-    setTimeout(() => {
-      setLoading(false);
-      setIsAuthenticated(true);
+    // Call the register method from authService
+    const result = await authService.register(formData);
+
+    if (result.success) {
+      // Registration successful
+      if (setIsAuthenticated) {
+        setIsAuthenticated(true);
+      }
       navigate('/');
-    }, 1500);
+    } else {
+      setLoading(false);
+      if (result.errors && Object.keys(result.errors).length > 0) {
+  // Format validation errors from the API response
+  const errorMessages = Object.entries(result.errors)
+    .map(([field, messages]) => `${field}: ${messages.join(', ')}`)
+    .join('\n');
+  setError(errorMessages);
+} else {
+  setError(result.message);
+}
+    }
   };
 
   return (
@@ -181,6 +205,42 @@ const Register = ({ setIsAuthenticated }) => {
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Confirm Password Field */}
+            {/* <div>
+              <label htmlFor="password_confirmation" className="block text-sm font-medium text-gray-700 mb-2">
+                Confirm Password
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  id="password_confirmation"
+                  name="password_confirmation"
+                  value={formData.password_confirmation}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-12"
+                  placeholder="••••••••"
+                  minLength="8"
+                />
+              </div>
+            </div> */}
+
+            {/* Referral Code Field */}
+            <div>
+              <label htmlFor="referral_code" className="block text-sm font-medium text-gray-700 mb-2">
+                Referral Code (Optional)
+              </label>
+              <input
+                type="text"
+                id="referral_code"
+                name="referral_code"
+                value={formData.referral_code}
+                onChange={handleChange}
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                placeholder="Enter referral code"
+              />
             </div>
 
             {/* Terms Checkbox */}

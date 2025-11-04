@@ -1,6 +1,12 @@
 import React from 'react';
-
+import authService from '../../services/authService';
 const Header = ({ toggleSidebar, title = "Dashboard" }) => {
+  // Add this function
+  const handleLogout = () => {
+    authService.logout();
+    window.location.href = '/login';
+  };
+
   return (
     <header className="bg-white border-b border-gray-100 px-4 md:px-6 py-4 sticky top-0 z-20">
       <div className="flex items-center justify-between">
@@ -16,6 +22,14 @@ const Header = ({ toggleSidebar, title = "Dashboard" }) => {
           </a>
           <button className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium text-sm transition">
             Upgrade
+          </button>
+          {/* Add logout button here */}
+          <button 
+            onClick={handleLogout}
+            className="text-gray-700 hover:text-red-600 px-2 py-1 rounded transition"
+            title="Logout"
+          >
+            <i className="fas fa-sign-out-alt text-lg"></i>
           </button>
         </div>
       </div>

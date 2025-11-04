@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import './App.css';
 
@@ -20,10 +20,26 @@ import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import Onboarding from './pages/Onboarding';
 
+// Import authentication service
+import authService from './services/authService';
+
+// Initialize auth interceptor
+authService.setupAxiosInterceptors();
+
 function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState('Dashboard');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Check if the user is already authenticated on page load
+  useEffect(() => {
+    const checkAuth = () => {
+      const isAuth = authService.isAuthenticated();
+      setIsAuthenticated(isAuth);
+    };
+    
+    checkAuth();
+  }, []);
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
@@ -38,11 +54,9 @@ function App() {
     closeSidebar();
   };
 
-  // Simple authentication check - this would be more robust in production
-  // with actual token validation and persistence
+  // Simple authentication check - using our auth service
   const checkAuth = () => {
-    // For demo purposes, just return the state value
-    return isAuthenticated;
+    return isAuthenticated || authService.isAuthenticated();
   };
 
   // Protected route component - redirects to login if not authenticated
@@ -103,7 +117,7 @@ function App() {
           } />
           <Route path="/register" element={
             <AuthRoute>
-              <Register />
+              <Register setIsAuthenticated={setIsAuthenticated} />
             </AuthRoute>
           } />
           <Route path="/forgot-password" element={
@@ -154,8 +168,10 @@ function App() {
             </ProtectedRoute>
           } />
 
-          {/* Catch-all - redirect to dashboard */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Catch-all - redirect to login if not authenticated, or dashboard if authenticated */}
+          <Route path="*" element={
+            checkAuth() ? <Navigate to="/" replace /> : <Navigate to="/login" replace />
+          } />
         </Routes>
       </div>
     </Router>

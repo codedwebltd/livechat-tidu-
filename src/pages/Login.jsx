@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import authService from '../services/authService';
 
 const Login = ({ setIsAuthenticated }) => {
   const navigate = useNavigate();
@@ -10,14 +11,13 @@ const Login = ({ setIsAuthenticated }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
 
   const handleChange = (e) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
     });
-    setError(''); // Clear error when user types
+    setError('');
   };
 
   const handleSubmit = async (e) => {
@@ -25,18 +25,19 @@ const Login = ({ setIsAuthenticated }) => {
     setLoading(true);
     setError('');
 
-    // Simulate API call
-    setTimeout(() => {
-      setLoading(false);
-      
-      // For demo purposes only - in production use proper authentication
-      if (formData.email && formData.password) {
+    // Call the login method from authService
+    const result = await authService.login(formData.email, formData.password);
+
+    if (result.success) {
+      // Login successful
+      if (setIsAuthenticated) {
         setIsAuthenticated(true);
-        navigate('/');
-      } else {
-        setError('Invalid email or password');
       }
-    }, 1500);
+      navigate('/');
+    } else {
+      setLoading(false);
+      setError(result.message);
+    }
   };
 
   return (
@@ -83,13 +84,6 @@ const Login = ({ setIsAuthenticated }) => {
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome back</h2>
             <p className="text-gray-500 text-sm">Enter your credentials to access your dashboard</p>
-            <p className="text-gray-400 text-xs">Demo account:
-                <span className="font-mono bg-gray-100 px-2 py-1 rounded-lg ml-1">
-                    email: support@codedhost.cloud | password: Demo@123
-                </span>
-            </p>
-
-            
           </div>
 
           {/* Error Message */}
@@ -158,22 +152,20 @@ const Login = ({ setIsAuthenticated }) => {
               <label className="flex items-center text-gray-500 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={rememberMe}
-                  onChange={() => setRememberMe(!rememberMe)}
                   className="w-4 h-4 rounded border-gray-300 bg-gray-50 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0"
                 />
                 <span className="ml-2">Remember me</span>
               </label>
-              <Link to="/forgot-password" className="text-blue-600 hover:underline">
+              <a href="#" className="text-blue-600 hover:underline">
                 Forgot password?
-              </Link>
+              </a>
             </div>
 
             {/* Submit Button */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-600/50 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center"
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-semibold py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center"
             >
               {loading ? (
                 <>

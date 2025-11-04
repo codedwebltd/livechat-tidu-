@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import BlogPostCarousel from '../components/BlogPostCarousel';
 import { Link } from 'react-router-dom';
+import authService from '../services/authService';
 
 const Dashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -9,7 +10,7 @@ const Dashboard = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
       setLoading(false);
-    }, 5000);
+    });//add ,1000 to simulate data loading etc.....
     
     return () => clearTimeout(timer);
   }, []);
@@ -21,29 +22,69 @@ const Dashboard = () => {
     </div>
   );
 
+  const getNextStepText = (currentStep) => {
+  const steps = {
+    'company': 'Complete company information',
+    'website': 'Set up your website details',
+    'appearance': 'Customize widget appearance',
+    'welcome': 'Configure welcome message',
+    'install': 'Install chat widget'
+  };
+  
+  return steps[currentStep] || 'Complete your setup';
+};
   return (
     <div className="p-4 md:p-6">
-      {/* Setup Card */}
-      {loading ? (
-        <Shimmer className="h-24 md:h-20 mb-6" />
-      ) : (
-        <div className="bg-white rounded-xl p-4 md:p-6 mb-6 shadow-sm border border-gray-100">
-          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-            <div className="flex items-start space-x-3 md:space-x-4">
-              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <span className="text-green-600 font-semibold text-sm">1/6</span>
-              </div>
-              <div className="flex-1">
-                <h2 className="text-base md:text-lg font-semibold text-gray-900 mb-1">Finalize your LiveChat setup</h2>
-                <p className="text-gray-600 text-xs md:text-sm">Let's get you setup to delight your customers. It's super easy and only takes a few minutes.</p>
-              </div>
-            </div>
-            <Link to="/onboarding" className="text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg font-medium text-xs md:text-sm whitespace-nowrap self-start md:self-auto transition">
-              Complete onboarding
-            </Link>
-          </div>
+{/* Setup Card */}
+{loading ? (
+  <Shimmer className="h-24 md:h-20 mb-6" />
+) : (
+  <div className="bg-white rounded-xl p-4 md:p-6 mb-6 shadow-sm border border-gray-100">
+    <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+      <div className="flex items-start space-x-3 md:space-x-4">
+        <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+          {authService.isOnboardingCompleted() ? (
+            <span className="text-green-600 font-semibold text-sm">6/6</span>
+          ) : (
+            <span className="text-green-600 font-semibold text-sm">
+              {`${authService.getUserData('onboarding_step') || 0}/6`}
+            </span>
+          )}
         </div>
-      )}
+        <div className="flex-1">
+          <h2 className="text-base md:text-lg font-semibold text-gray-900 mb-1">
+            {authService.isOnboardingCompleted() ? 'LiveChat setup completed!' : 'Finalize your LiveChat setup'}
+          </h2>
+          <p className="text-gray-600 text-xs md:text-sm">
+            {authService.isOnboardingCompleted() 
+              ? 'Your account is fully set up. You can now start using LiveChat.'
+              : 'Let\'s get you setup to delight your customers. It\'s super easy and only takes a few minutes.'}
+          </p>
+          
+          {/* Progress bar */}
+          <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden mt-2">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+              style={{ 
+                width: authService.isOnboardingCompleted() ? '100%' : `${((authService.getUserData('onboarding_step') || 0) / 6) * 100}%` 
+              }}
+            ></div>
+          </div>
+          
+          {/* Next step based on current_step in onboarding */}
+          {!authService.isOnboardingCompleted() && (
+            <p className="text-blue-600 text-xs mt-2">
+              Next step: {getNextStepText(authService.getUserData('onboarding.current_step'))}
+            </p>
+          )}
+        </div>
+      </div>
+      <Link to="/onboarding" className="text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg font-medium text-xs md:text-sm whitespace-nowrap self-start md:self-auto transition">
+        {authService.isOnboardingCompleted() ? 'View setup' : 'Complete onboarding'}
+      </Link>
+    </div>
+  </div>
+)}
 
       {/* Quick Actions */}
       <div className="mb-6">
