@@ -6,7 +6,7 @@ export default function SimplifiedFacebookShimmer() {
   useEffect(() => {
     const interval = setInterval(() => {
       setLoading(!loading);
-    }, 5000);
+    }, 1000);
     return () => clearInterval(interval);
   }, [loading]);
 
