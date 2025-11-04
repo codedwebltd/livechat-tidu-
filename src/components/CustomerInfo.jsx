@@ -12,7 +12,7 @@ const CustomerInfo = ({ conversation, onBack, getAvatarBg }) => {
           <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-lg transition">
             <i className="fas fa-arrow-left text-gray-700 text-lg"></i>
           </button>
-          <h2 className="font-semibold text-lg">Customer Info</h2>
+          {/* <h2 className="font-semibold text-lg">Customer Info</h2> */}
         </div>
         <div className="flex items-center space-x-1">
           <button 
