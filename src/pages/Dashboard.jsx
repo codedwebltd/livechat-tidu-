@@ -9,17 +9,15 @@ const Dashboard = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
       setLoading(false);
-    }, 2000);
+    }, 5000);
     
     return () => clearTimeout(timer);
   }, []);
 
-  // Define a simple ShimmerItem component for reuse
-  const ShimmerItem = ({ className }) => (
-    <div className={`bg-gray-200 rounded-xl relative overflow-hidden ${className}`}>
-      <div 
-        className="absolute inset-0 bg-shimmer-gradient bg-[length:1000px_100%] animate-shimmer" 
-      />
+  // Shimmer component inline - no need for separate file
+  const Shimmer = ({ className }) => (
+    <div className={`bg-gray-200 rounded-xl overflow-hidden relative ${className}`}>
+      <div className="absolute inset-0 bg-shimmer-gradient bg-[length:1000px_100%] animate-shimmer" />
     </div>
   );
 
@@ -27,7 +25,7 @@ const Dashboard = () => {
     <div className="p-4 md:p-6">
       {/* Setup Card */}
       {loading ? (
-        <ShimmerItem className="h-24 md:h-20 mb-6" />
+        <Shimmer className="h-24 md:h-20 mb-6" />
       ) : (
         <div className="bg-white rounded-xl p-4 md:p-6 mb-6 shadow-sm border border-gray-100">
           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
@@ -54,7 +52,7 @@ const Dashboard = () => {
           
           {/* Live conversations card */}
           {loading ? (
-            <ShimmerItem className="h-24" />
+            <Shimmer className="h-24" />
           ) : (
             <div className="bg-white rounded-xl p-4 md:p-6 shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer">
               <div className="flex items-center space-x-4">
@@ -71,7 +69,7 @@ const Dashboard = () => {
 
           {/* Tickets card */}
           {loading ? (
-            <ShimmerItem className="h-24" />
+            <Shimmer className="h-24" />
           ) : (
             <div className="bg-white rounded-xl p-4 md:p-6 shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer">
               <div className="flex items-center space-x-4">
@@ -88,7 +86,7 @@ const Dashboard = () => {
 
           {/* Lyro AI Agent card */}
           {loading ? (
-            <ShimmerItem className="h-24" />
+            <Shimmer className="h-24" />
           ) : (
             <div className="bg-white rounded-xl p-4 md:p-6 shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer">
               <div className="flex items-center space-x-4">
@@ -105,7 +103,7 @@ const Dashboard = () => {
 
           {/* Flows card */}
           {loading ? (
-            <ShimmerItem className="h-24" />
+            <Shimmer className="h-24" />
           ) : (
             <div className="bg-white rounded-xl p-4 md:p-6 shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer">
               <div className="flex items-center space-x-4">
@@ -122,7 +120,7 @@ const Dashboard = () => {
 
           {/* Live visitors card */}
           {loading ? (
-            <ShimmerItem className="h-24 sm:col-span-2" />
+            <Shimmer className="h-24 sm:col-span-2" />
           ) : (
             <div className="bg-white rounded-xl p-4 md:p-6 shadow-sm border border-gray-100 hover:shadow-md transition cursor-pointer sm:col-span-2">
               <div className="flex items-center space-x-4">
@@ -141,31 +139,119 @@ const Dashboard = () => {
 
       {/* Project Status */}
       {loading ? (
-        <ShimmerItem className="h-48 mb-6" />
+        <Shimmer className="h-48 mb-6" />
       ) : (
         <div className="mb-6">
           <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-4">Project status</h3>
           <div className="bg-white rounded-xl p-4 md:p-6 shadow-sm border border-gray-100">
-            {/* Content here */}
+            
+            {/* Chat Widget */}
+            <div className="flex items-start justify-between pb-4 mb-4 border-b border-gray-100">
+              <div className="flex items-start space-x-3">
+                <i className="fas fa-comment-dots text-gray-400 text-xl mt-1"></i>
+                <div>
+                  <h4 className="font-semibold text-gray-900 text-sm">Chat Widget</h4>
+                  <p className="text-red-600 text-xs flex items-center mt-1">
+                    <i className="fas fa-exclamation-circle mr-1"></i>
+                    Chat Widget is not installed
+                  </p>
+                </div>
+              </div>
+              <a href="#" className="text-blue-600 hover:underline text-xs font-medium whitespace-nowrap">Install Chat Widget</a>
+            </div>
+
+            {/* Mailbox */}
+            <div className="flex items-start justify-between pb-4 mb-4 border-b border-gray-100">
+              <div className="flex items-start space-x-3">
+                <i className="fas fa-envelope text-gray-400 text-xl mt-1"></i>
+                <div>
+                  <h4 className="font-semibold text-gray-900 text-sm">Mailbox</h4>
+                  <p className="text-gray-500 text-xs mt-1">Connect your email inbox</p>
+                </div>
+              </div>
+              <a href="#" className="text-blue-600 hover:underline text-xs font-medium whitespace-nowrap">Connect your mailbox</a>
+            </div>
+
+            {/* Domains */}
+            <div className="flex items-start justify-between">
+              <div className="flex items-start space-x-3">
+                <i className="fas fa-globe text-gray-400 text-xl mt-1"></i>
+                <div>
+                  <h4 className="font-semibold text-gray-900 text-sm">Domains</h4>
+                  <p className="text-gray-500 text-xs mt-1">Add your website domain</p>
+                </div>
+              </div>
+              <a href="#" className="text-blue-600 hover:underline text-xs font-medium whitespace-nowrap">Connect domain</a>
+            </div>
           </div>
         </div>
       )}
       
       {/* Current Usage */}
       {loading ? (
-        <ShimmerItem className="h-72 mb-6" />
+        <Shimmer className="h-72 mb-6" />
       ) : (
         <div className="mb-6">
           <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-4">Current usage</h3>
           <div className="bg-white rounded-xl p-4 md:p-6 shadow-sm border border-gray-100">
-            {/* Content here */}
+            
+            {/* Customer Service */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h4 className="font-semibold text-gray-900 text-sm">Customer service</h4>
+                  <p className="text-xs text-gray-500 mt-1">Free</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-gray-900">0 <span className="text-sm text-gray-500 font-normal">/ 50</span></p>
+                </div>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div className="bg-blue-600 h-2 rounded-full" style={{ width: '0%' }}></div>
+              </div>
+              <a href="#" className="text-blue-600 hover:underline text-xs font-medium inline-block mt-2">Install Chat Widget to see this</a>
+            </div>
+
+            {/* Lyro AI Agent */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h4 className="font-semibold text-gray-900 text-sm">Lyro AI Agent</h4>
+                  <p className="text-xs text-gray-500 mt-1">Free</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-gray-900">0 <span className="text-sm text-gray-500 font-normal">/ 50</span></p>
+                </div>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div className="bg-purple-600 h-2 rounded-full" style={{ width: '0%' }}></div>
+              </div>
+              <a href="#" className="text-blue-600 hover:underline text-xs font-medium inline-block mt-2">Set up Lyro AI Agent</a>
+            </div>
+
+            {/* Flows */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <h4 className="font-semibold text-gray-900 text-sm">Flows</h4>
+                  <p className="text-xs text-gray-500 mt-1">Free</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-gray-900">0 <span className="text-sm text-gray-500 font-normal">/ 100</span></p>
+                </div>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div className="bg-green-600 h-2 rounded-full" style={{ width: '0%' }}></div>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">100 visitors reached</p>
+            </div>
           </div>
         </div>
       )}
       
       {/* Blog Post Carousel */}
       {loading ? (
-        <ShimmerItem className="h-64" />
+        <Shimmer className="h-64" />
       ) : (
         <BlogPostCarousel />
       )}
