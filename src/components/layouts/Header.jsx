@@ -18,7 +18,7 @@ const Header = ({ toggleSidebar, title = "Dashboard" }) => {
         </div>
         <div className="flex items-center space-x-2 md:space-x-3">
           <a href="#" className="text-blue-600 hover:underline text-sm font-medium">
-            Usage and plan
+            Usage
           </a>
           <button className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium text-sm transition">
             Upgrade
