@@ -24,7 +24,6 @@ const Sidebar = ({ isOpen, onClose, activePage = 'Dashboard', onNavigate = () =>
 
       {/* Navigation */}
       <div className="overflow-y-auto h-[calc(100%-130px)]"> {/* Adjusted height to account for user profile */}
-        
         {/* Main Menu */}
         <div className="p-4">
           <div className="mb-5">
@@ -211,7 +210,6 @@ const Sidebar = ({ isOpen, onClose, activePage = 'Dashboard', onNavigate = () =>
           </div>
         </div>
       </div>
-
 
 
       {/* User Profile - Fixed and properly styled */}
