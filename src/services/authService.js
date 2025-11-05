@@ -187,60 +187,73 @@ const authService = {
     }
   },
 
-  updateOnboarding: async (onboardingData) => {
-    try {
-      const response = await axios.post(`${API_URL}/onboarding/update`, onboardingData);
+ updateOnboarding: async (onboardingData) => {
+  try {
+    const response = await axios.post(`${API_URL}/onboarding/update`, onboardingData);
+    
+    if (response.data.status === 'success') {
+      // Get current user and update with the fresh data
+      const userData = response.data.user;
       
-      if (response.data.status === 'success') {
-        // Update the user object in session storage to include the latest onboarding data
-        const user = authService.getCurrentUser();
-        if (user) {
-          user.onboarding = response.data.onboarding;
-          if (response.data.onboarding.completed) {
-            user.onboarding_completed = true;
-            sessionStorage.setItem('onboarding_completed', true);
-          }
-          sessionStorage.setItem('user', JSON.stringify(user));
-        }
+      if (userData) {
+        // Update full user object
+        sessionStorage.setItem('user', JSON.stringify(userData));
         
-        return { success: true, data: response.data.onboarding };
-      } else {
-        return { success: false, message: response.data.message };
+        // Update onboarding completion flag
+        if (response.data.onboarding_completed !== undefined) {
+          sessionStorage.setItem('onboarding_completed', response.data.onboarding_completed);
+        }
       }
-    } catch (error) {
-      console.error('Error updating onboarding:', error);
+      
       return { 
-        success: false, 
-        message: error.response?.data?.message || 'Failed to update onboarding'
+        success: true, 
+        data: response.data 
       };
+    } else {
+      return { success: false, message: response.data.message };
     }
-  },
+  } catch (error) {
+    console.error('Error updating onboarding:', error);
+    return { 
+      success: false, 
+      message: error.response?.data?.message || 'Failed to update onboarding'
+    };
+  }
+},
 
-  skipOnboarding: async () => {
-    try {
-      const response = await axios.post(`${API_URL}/onboarding/skip`);
+skipOnboarding: async () => {
+  try {
+    const response = await axios.post(`${API_URL}/onboarding/skip`);
+    
+    if (response.data.status === 'success') {
+      // Get updated user data
+      const userData = response.data.user;
       
-      if (response.data.status === 'success') {
-        // Update user data to reflect onboarding completion
-        const user = authService.getCurrentUser();
-        if (user) {
-          user.onboarding_completed = true;
-          sessionStorage.setItem('user', JSON.stringify(user));
-          sessionStorage.setItem('onboarding_completed', true);
-        }
+      if (userData) {
+        // Update full user object
+        sessionStorage.setItem('user', JSON.stringify(userData));
         
-        return { success: true };
-      } else {
-        return { success: false, message: response.data.message };
+        // Update onboarding completion flag (will be false per your updated controller)
+        if (response.data.onboarding_completed !== undefined) {
+          sessionStorage.setItem('onboarding_completed', response.data.onboarding_completed);
+        }
       }
-    } catch (error) {
-      console.error('Error skipping onboarding:', error);
+      
       return { 
-        success: false, 
-        message: error.response?.data?.message || 'Failed to skip onboarding'
+        success: true,
+        data: response.data 
       };
+    } else {
+      return { success: false, message: response.data.message };
     }
-  },
+  } catch (error) {
+    console.error('Error skipping onboarding:', error);
+    return { 
+      success: false, 
+      message: error.response?.data?.message || 'Failed to skip onboarding'
+    };
+  }
+},
 
   // Setup axios interceptor for adding token to requests
   setupAxiosInterceptors: () => {

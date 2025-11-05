@@ -21,24 +21,46 @@ const Login = ({ setIsAuthenticated }) => {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+  e.preventDefault();
+  setLoading(true);
+  setError('');
 
-    // Call the login method from authService
-    const result = await authService.login(formData.email, formData.password);
+  // Call the login method from authService
+  const result = await authService.login(formData.email, formData.password);
 
-    if (result.success) {
-      // Login successful
-      if (setIsAuthenticated) {
-        setIsAuthenticated(true);
-      }
-      navigate('/');
-    } else {
-      setLoading(false);
-      setError(result.message);
+  if (result.success) {
+    // Login successful
+    if (setIsAuthenticated) {
+      setIsAuthenticated(true);
     }
-  };
+    
+    // Perform a hard refresh by redirecting to home page
+    window.location.href = '/';
+  } else {
+    setLoading(false);
+    setError(result.message);
+  }
+};
+  // const handleSubmit = async (e) => {
+  //   e.preventDefault();
+  //   setLoading(true);
+  //   setError('');
+
+  //   // Call the login method from authService
+  //   const result = await authService.login(formData.email, formData.password);
+
+  //   if (result.success) {
+  //     // Login successful
+  //     if (setIsAuthenticated) {
+  //       setIsAuthenticated(true);
+  //     }
+  //     navigate('/');
+  //   } else {
+  //     setLoading(false);
+  //     setError(result.message);
+  //   }
+  // };
+
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-8">

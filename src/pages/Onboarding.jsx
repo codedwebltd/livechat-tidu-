@@ -154,28 +154,30 @@ const Onboarding = () => {
   };
 
   // Save current step to the server
-  const saveCurrentStep = async () => {
-    setSaveLoading(true);
+const saveCurrentStep = async () => {
+  setSaveLoading(true);
+  
+  try {
+    // Prepare data to send to API
+    const dataToSend = {
+      ...formData,
+      current_step: currentStep
+    };
     
-    try {
-      // Prepare data to send to API
-      const dataToSend = {
-        ...formData,
-        current_step: currentStep
-      };
-      
-      // Call API to update onboarding step
-      const result = await authService.updateOnboarding(dataToSend);
-      
-      if (!result.success) {
-        console.error('Failed to save onboarding step:', result.message);
-      }
-    } catch (error) {
-      console.error('Error saving onboarding step:', error);
-    } finally {
-      setSaveLoading(false);
+    // Call API to update onboarding step
+    const result = await authService.updateOnboarding(dataToSend);
+    
+    if (!result.success) {
+      console.error('Failed to save onboarding step:', result.message);
     }
-  };
+    
+    // No need to handle session storage here as authService now does it
+  } catch (error) {
+    console.error('Error saving onboarding step:', error);
+  } finally {
+    setSaveLoading(false);
+  }
+};
 
   // Handle next step
   const handleNextStep = async () => {
@@ -206,25 +208,25 @@ const Onboarding = () => {
   };
 
   // Handle skip onboarding
-  const handleSkip = async () => {
-    setLoading(true);
+const handleSkip = async () => {
+  setLoading(true);
+  
+  try {
+    // Call API to skip onboarding
+    const result = await authService.skipOnboarding();
     
-    try {
-      // Call API to skip onboarding
-      const result = await authService.skipOnboarding();
-      
-      if (result.success) {
-        navigate('/');
-      } else {
-        
-        console.error('Failed to skip onboarding:', result.message);
-      }
-    } catch (error) {
-      console.error('Error skipping onboarding:', error);
-    } finally {
-      setLoading(false);
+    if (result.success) {
+      // Skip successful - the session storage is already updated in authService
+      navigate('/');
+    } else {
+      console.error('Failed to skip onboarding:', result.message);
     }
-  };
+  } catch (error) {
+    console.error('Error skipping onboarding:', error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Handle finish onboarding
   const handleFinish = async () => {
@@ -241,7 +243,7 @@ const Onboarding = () => {
       const result = await authService.updateOnboarding(finalData);
       
       if (result.success) {
-        navigate('/');
+        window.location.href = '/';
       } else {
         console.error('Failed to complete onboarding:', result.message);
       }
@@ -497,23 +499,25 @@ const Onboarding = () => {
                   <h2 className="text-xl font-bold text-gray-900 mb-6">Website & Goals</h2>
                   
                   <div className="space-y-5">
-                    <div>
-                      <label htmlFor="website" className="block text-sm font-medium text-gray-700 mb-1">
-                        Website URL *
-                      </label>
-                      <input
-                        id="website"
-                        name="website"
-                        type="url"
-                        value={formData.website}
-                        onChange={handleChange}
-                        className="block w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                        placeholder="https://example.com"
-                      />
-                      <p className="mt-1 text-xs text-gray-500">
-                        We'll use this to help configure your chat widget and AI agent
-                      </p>
-                    </div>
+               <div>
+  <label htmlFor="website" className="block text-sm font-medium text-gray-700 mb-1">
+    Website URL *
+  </label>
+  <input
+    id="website"
+    name="website"
+    type="url"
+    value={formData.website}
+    onChange={handleChange}
+    required
+    pattern="https://.*"
+    className="block w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+    placeholder="https://example.com"
+  />
+  <p className="mt-1 text-xs text-gray-500">
+    Website must start with https:// (e.g., https://example.com)
+  </p>
+</div>
                     
                     <div>
                       <label htmlFor="primary_goal" className="block text-sm font-medium text-gray-700 mb-1">

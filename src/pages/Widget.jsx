@@ -1,46 +1,164 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import authService from '../services/authService';
+
 
 const Widget = () => {
   const [activeMethod, setActiveMethod] = useState('manual');
   const [copied, setCopied] = useState(false);
+  const [widget, setWidget] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [verifying, setVerifying] = useState(false);
+  const [error, setError] = useState('');
+
+  // Fetch widget data when component mounts
+  useEffect(() => {
+    const fetchWidget = async () => {
+      try {
+        const response = await axios.get(`${process.env.REACT_APP_API_URL}/widget`, {
+          headers: {
+            'Authorization': `Bearer ${authService.getToken()}`
+          }
+        });
+        
+        if (response.data.status === 'success') {
+          setWidget(response.data.widget);
+        } else {
+          setError('Failed to load widget data');
+        }
+      } catch (error) {
+        setError('Error loading widget data');
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchWidget();
+  }, []);
+
+  // Periodically check if widget is installed
+  useEffect(() => {
+    if (!widget || widget.is_installed) return;
+    
+    const checkInterval = setInterval(async () => {
+      try {
+        setVerifying(true);
+        const response = await axios.get(`${process.env.REACT_APP_API_URL}/widget`, {
+          headers: {
+            'Authorization': `Bearer ${authService.getToken()}`
+          }
+        });
+        
+        if (response.data.status === 'success') {
+          setWidget(response.data.widget);
+          
+          // If widget is now installed, clear the interval
+          if (response.data.widget.is_installed) {
+            clearInterval(checkInterval);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking widget status:', error);
+      } finally {
+        setVerifying(false);
+      }
+    }, 30000); // Check every 30 seconds
+    
+    return () => clearInterval(checkInterval);
+  }, [widget]);
 
   const handleMethodSelect = (method) => {
     setActiveMethod(method);
   };
 
-  const copyCode = () => {
-    const code = `<script src="//code.livechat.co/widget.js" async></script>`;
-    navigator.clipboard.writeText(code).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }).catch((error) => {
-      console.error('Failed to copy: ', error);
-    });
-  };
+const copyCode = () => {
+  if (!widget) return;
+  
+  // Remove '/api' from the URL if present
+  const baseUrl = (process.env.REACT_APP_API_URL || window.location.origin).replace('/api', '');
+  
+  const code = `<script src="${baseUrl}/widgets/widget-${widget.widget_key}.js" async></script>`;
+  
+  navigator.clipboard.writeText(code).then(() => {
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }).catch((error) => {
+    console.error('Failed to copy: ', error);
+  });
+};
+
+  if (loading) {
+    return (
+      <div className="p-4 md:p-6 flex justify-center items-center">
+        <div className="animate-spin">
+          <i className="fas fa-circle-notch text-blue-600 text-3xl"></i>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 md:p-6">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700">
+          {error}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-6">
-      {/* Alert Banner */}
-      <div className="bg-white border border-red-200 rounded-xl p-4 md:p-5 mb-6 shadow-sm">
-        <div className="flex items-start space-x-4">
-          <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
-            <i className="fas fa-exclamation-circle text-red-600 text-xl"></i>
+      {/* Alert Banner - Only show if not installed */}
+      {widget && !widget.is_installed && (
+        <div className="bg-white border border-red-200 rounded-xl p-4 md:p-5 mb-6 shadow-sm">
+          <div className="flex items-start space-x-4">
+            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <i className="fas fa-exclamation-circle text-red-600 text-xl"></i>
+            </div>
+            <div className="flex-1">
+              <h3 className="font-bold text-gray-900 text-base md:text-lg mb-1">Chat Widget Not Installed</h3>
+              <p className="text-gray-600 text-sm">Your chat widget code hasn't been installed yet. Follow the steps below to get started and activate your live chat.</p>
+            </div>
+            <button className="text-gray-400 hover:text-gray-600 transition">
+              <i className="fas fa-times text-xl"></i>
+            </button>
           </div>
-          <div className="flex-1">
-            <h3 className="font-bold text-gray-900 text-base md:text-lg mb-1">Chat Widget Not Installed</h3>
-            <p className="text-gray-600 text-sm">Your chat widget code hasn't been installed yet. Follow the steps below to get started and activate your live chat.</p>
-          </div>
-          <button className="text-gray-400 hover:text-gray-600 transition">
-            <i className="fas fa-times text-xl"></i>
-          </button>
         </div>
-      </div>
+      )}
+      
+      {/* Success Banner - Only show if installed */}
+      {widget && widget.is_installed && (
+        <div className="bg-white border border-green-200 rounded-xl p-4 md:p-5 mb-6 shadow-sm">
+          <div className="flex items-start space-x-4">
+            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <i className="fas fa-check text-green-600 text-xl"></i>
+            </div>
+            <div className="flex-1">
+              <h3 className="font-bold text-gray-900 text-base md:text-lg mb-1">Chat Widget Installed</h3>
+              <p className="text-gray-600 text-sm">
+                Your chat widget has been successfully installed and verified on your website.
+                {widget.last_verified_at && (
+                  <span className="block mt-1 text-xs text-gray-500">
+                    Last verified: {new Date(widget.last_verified_at).toLocaleString()}
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Installation Card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="p-6 md:p-8">
           <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Installation</h2>
-          <p className="text-gray-600 text-sm md:text-base mb-8">It looks like you haven't installed the chat code yet. Choose from one of the installation guides below:</p>
+          <p className="text-gray-600 text-sm md:text-base mb-8">
+            {widget && widget.is_installed 
+              ? 'Your widget is successfully installed. You can customize it below or reinstall if needed.'
+              : 'Choose from one of the installation guides below to add the chat widget to your website:'}
+          </p>
 
           {/* Installation Options Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
@@ -133,7 +251,10 @@ const Widget = () => {
                   
                   <div className="bg-gray-900 rounded-xl p-4 relative">
                     <code className="text-green-400 text-xs md:text-sm block overflow-x-auto">
-                      &lt;script src="//code.livechat.co/widget.js" async&gt;&lt;/script&gt;
+                      {widget ? 
+                        `<script src="${(process.env.REACT_APP_API_URL || window.location.origin).replace('/api', '')}/widgets/widget-${widget.widget_key}.js" async></script>` :
+                        `<script src="//widget-loading-error.js" async></script>`
+                      }
                     </code>
                     <button 
                       onClick={copyCode} 
@@ -173,10 +294,23 @@ const Widget = () => {
                       
                       <div className="bg-white rounded-xl p-4 border border-gray-200">
                         <div className="flex items-center space-x-3">
-                          <div className="animate-spin">
-                            <i className="fas fa-circle-notch text-blue-600 text-xl"></i>
-                          </div>
-                          <span className="text-sm text-gray-600">Checking widget activation...</span>
+                          {widget && widget.is_installed ? (
+                            <>
+                              <div className="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
+                                <i className="fas fa-check text-green-600"></i>
+                              </div>
+                              <span className="text-sm text-gray-600">Widget successfully installed!</span>
+                            </>
+                          ) : (
+                            <>
+                              <div className={`${verifying ? 'animate-spin' : ''}`}>
+                                <i className={`fas fa-${verifying ? 'circle-notch' : 'clock'} text-blue-600 text-xl`}></i>
+                              </div>
+                              <span className="text-sm text-gray-600">
+                                {verifying ? 'Checking widget activation...' : 'Waiting for widget installation...'}
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>

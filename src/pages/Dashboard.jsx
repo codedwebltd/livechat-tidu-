@@ -186,20 +186,29 @@ const Dashboard = () => {
           <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-4">Project status</h3>
           <div className="bg-white rounded-xl p-4 md:p-6 shadow-sm border border-gray-100">
             
-            {/* Chat Widget */}
-            <div className="flex items-start justify-between pb-4 mb-4 border-b border-gray-100">
-              <div className="flex items-start space-x-3">
-                <i className="fas fa-comment-dots text-gray-400 text-xl mt-1"></i>
-                <div>
-                  <h4 className="font-semibold text-gray-900 text-sm">Chat Widget</h4>
-                  <p className="text-red-600 text-xs flex items-center mt-1">
-                    <i className="fas fa-exclamation-circle mr-1"></i>
-                    Chat Widget is not installed
-                  </p>
-                </div>
-              </div>
-              <a href="#" className="text-blue-600 hover:underline text-xs font-medium whitespace-nowrap">Install Chat Widget</a>
-            </div>
+{/* Chat Widget */}
+<div className="flex items-start justify-between pb-4 mb-4 border-b border-gray-100">
+  <div className="flex items-start space-x-3">
+    <i className="fas fa-comment-dots text-gray-400 text-xl mt-1"></i>
+    <div>
+      <h4 className="font-semibold text-gray-900 text-sm">Chat Widget</h4>
+      {authService.getUserData('widget_installed') ? (
+        <p className="text-green-600 text-xs flex items-center mt-1">
+          <i className="fas fa-check-circle mr-1"></i>
+          Chat Widget is installed
+        </p>
+      ) : (
+        <p className="text-red-600 text-xs flex items-center mt-1">
+          <i className="fas fa-exclamation-circle mr-1"></i>
+          Chat Widget is not installed
+        </p>
+      )}
+    </div>
+  </div>
+  <Link to="/widget" className="text-blue-600 hover:underline text-xs font-medium whitespace-nowrap">
+    {authService.getUserData('widget_installed') ? 'View Widget' : 'Install Chat Widget'}
+  </Link>
+</div>
 
             {/* Mailbox */}
             <div className="flex items-start justify-between pb-4 mb-4 border-b border-gray-100">

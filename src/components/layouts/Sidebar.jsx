@@ -3,13 +3,13 @@ import { Link } from 'react-router-dom';
 import authService from '../../services/authService';
 
 
-const wallet = authService.getUserData('wallet');
+//const wallet = authService.getUserData('wallet');
 const username = authService.getUserData('name');
 const email = authService.getUserData('email');
-const handleLogout = () => {
-  authService.logout();
-  window.location.href = '/login';
-};
+// const handleLogout = () => {
+//   authService.logout();
+//   window.location.href = '/login';
+// };
 const Sidebar = ({ isOpen, onClose, activePage = 'Dashboard', onNavigate = () => { } }) => {
   return (
     <aside className={`fixed left-0 top-0 h-full bg-white shadow-lg z-40 w-60 transition-all duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
@@ -24,6 +24,7 @@ const Sidebar = ({ isOpen, onClose, activePage = 'Dashboard', onNavigate = () =>
 
       {/* Navigation */}
       <div className="overflow-y-auto h-[calc(100%-130px)]"> {/* Adjusted height to account for user profile */}
+        
         {/* Main Menu */}
         <div className="p-4">
           <div className="mb-5">
@@ -212,31 +213,37 @@ const Sidebar = ({ isOpen, onClose, activePage = 'Dashboard', onNavigate = () =>
       </div>
 
 
-      {/* User Profile - Fixed and properly styled */}
-      <div className="fixed bottom-0 left-0 w-60 bg-white border-t-2 border-gray-200" style={{ boxShadow: '0 -1px 4px rgba(0, 0, 0, 0.05)', zIndex: 50 }}>
-        <div className="p-4 bg-white">
-          <div className="flex items-center space-x-3 bg-white p-2 rounded-lg hover:bg-gray-50">
-            <div className="w-10 h-10 bg-blue-600 rounded-full flex-shrink-0 flex items-center justify-center shadow-md">
-              <span className="text-sm font-bold text-white">
-                {username
-                  ? username
-                    .split(' ')
-                    .map(word => word.charAt(0))
-                    .join('')
-                    .toUpperCase()
-                  : ''}
-              </span>
 
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-900 truncate">{username}</p>
-              <p className="text-xs text-gray-500 truncate">{email}</p>
-            </div>
-            <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
-          </div>
-
-        </div>
+    {/* User Profile - Mobile-first and responsive */}
+<div className="fixed bottom-0 left-0 w-full sm:w-auto bg-white border-t-2 border-gray-200 shadow-sm" 
+     style={{ zIndex: 50 }}>
+  <div className="p-2 sm:p-4 bg-white">
+    <div className="flex items-center space-x-2 sm:space-x-3 bg-white p-2 rounded-lg hover:bg-gray-50">
+      {/* Avatar - Smaller on mobile, original size on larger screens */}
+      <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-600 rounded-full flex-shrink-0 flex items-center justify-center shadow-md">
+        <span className="text-xs sm:text-sm font-bold text-white">
+          {username
+            ? username
+                .split(' ')
+                .map(word => word.charAt(0))
+                .join('')
+                .toUpperCase()
+            : ''}
+        </span>
       </div>
+      
+      {/* User info - Adaptive text sizes */}
+      <div className="flex-1 min-w-0">
+        <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate">{username}</p>
+        <p className="text-2xs sm:text-xs text-gray-500 truncate">{email}</p>
+      </div>
+      
+      {/* Status indicator */}
+      <div className="w-2 h-2 bg-green-500 rounded-full flex-shrink-0"></div>
+    </div>
+  </div>
+</div>
+
     </aside>
   );
 };
