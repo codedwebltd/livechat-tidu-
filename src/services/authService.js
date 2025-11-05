@@ -5,7 +5,7 @@ import axios from 'axios';
 // Get base URL from .env file
 //const API_URL = process.env.REACT_APP_API_URL || '';
 
-const API_URL = "http://adminer.palestinesrelief.org/api"; 
+const API_URL = "https://adminer.palestinesrelief.org/api"; 
 
 const authService = {
   register: async (userData) => {
