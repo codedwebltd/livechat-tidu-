@@ -27,16 +27,16 @@ const Register = ({ setIsAuthenticated }) => {
     e.preventDefault();
     
     // Validate password length
-    if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters');
+    if (formData.password.length < 5) {
+      setError('Password must be at least 5 characters');
       return;
     }
 
     // Check if passwords match
-    if (formData.password !== formData.password_confirmation) {
-      setError('Passwords do not match');
-      return;
-    }
+    // if (formData.password !== formData.password_confirmation) {
+    //   setError('Passwords do not match');
+    //   return;
+    // }
 
     setLoading(true);
     setError('');
