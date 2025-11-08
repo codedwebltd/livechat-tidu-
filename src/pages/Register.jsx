@@ -49,7 +49,8 @@ const Register = ({ setIsAuthenticated }) => {
       if (setIsAuthenticated) {
         setIsAuthenticated(true);
       }
-      navigate('/');
+      //navigate('/');
+      window.location.href = '/';
     } else {
       setLoading(false);
       if (result.errors && Object.keys(result.errors).length > 0) {
