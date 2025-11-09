@@ -4,7 +4,7 @@ import webSocketService from '../services/webSocketService';
 
 const API_URL = "https://adminer.palestinesrelief.org/api";
 
-// Create a cache object outside component to persist between renders
+// Global cache for conversations - persists between renders and component mounts
 const messagesCache = {};
 
 const ActiveChatArea = ({ 
@@ -13,15 +13,75 @@ const ActiveChatArea = ({
   onJoin, 
   onSendMessage,
   onShowUserInfo,
+  onCloseConversation,
   getAvatarBg
 }) => {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isBackgroundFetching, setIsBackgroundFetching] = useState(false);
   const [typing, setTyping] = useState(false);
-  const [silentRefresh, setSilentRefresh] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
+  const [errorTimeout, setErrorTimeout] = useState(null);
+  const [isClosing, setIsClosing] = useState(false);
+  const [isReopening, setIsReopening] = useState(false);
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const pollingIntervalRef = useRef(null);
+  const lastMessageTimeRef = useRef(null);
+  const isActiveRef = useRef(true); // Track if component is active/visible
+  
+  // Show error toast message that auto-dismisses
+  const showError = (message) => {
+    // Clear any existing error timeout
+    if (errorTimeout) {
+      clearTimeout(errorTimeout);
+    }
+    
+    // Set the error message
+    setErrorMessage(message);
+    
+    // Auto dismiss after 5 seconds
+    const timeout = setTimeout(() => {
+      setErrorMessage(null);
+    }, 5000);
+    
+    setErrorTimeout(timeout);
+  };
+  
+  // Clear the error message manually
+  const clearError = () => {
+    if (errorTimeout) {
+      clearTimeout(errorTimeout);
+    }
+    setErrorMessage(null);
+  };
+  
+  // Add a system message to the chat
+  const addSystemMessage = (content) => {
+    const systemMessage = {
+      id: 'system-' + Date.now(),
+      conversation_id: conversation?.id,
+      type: 'system',
+      content: content,
+      created_at: new Date().toISOString()
+    };
+    
+    setMessages(prev => [...prev, systemMessage]);
+  };
+  
+  useEffect(() => {
+    // Set active on mount
+    isActiveRef.current = true;
+    
+    // Cleanup on unmount
+    return () => {
+      isActiveRef.current = false;
+      if (errorTimeout) {
+        clearTimeout(errorTimeout);
+      }
+    };
+  }, []);
   
   useEffect(() => {
     // Adjust textarea height when component mounts
@@ -33,47 +93,131 @@ const ActiveChatArea = ({
     adjustTextareaHeight();
     
     // Send typing indicator when user is typing
-    if (conversation && conversation.id && message.trim()) {
+    if (conversation?.id && message.trim()) {
       webSocketService.sendTypingIndicator(conversation.id, true);
     }
+    
+    // Clear typing indicator after 3 seconds of inactivity
+    const typingTimeout = setTimeout(() => {
+      if (conversation?.id && message.trim() === '') {
+        webSocketService.sendTypingIndicator(conversation.id, false);
+      }
+    }, 3000);
+    
+    return () => clearTimeout(typingTimeout);
   }, [message, conversation]);
 
-  // Fetch messages when conversation changes and set up WebSocket
-  useEffect(() => {
-    if (!conversation || !conversation.id) return;
+  // Effect to handle conversation changes and WebSocket setup
+useEffect(() => {
+  if (!conversation?.id) return;
+  
+  // IMPORTANT: Always clear messages and show loading when conversation changes
+  // This ensures we don't see the wrong conversation content while loading
+  setMessages([]);
+  setIsInitialLoading(true);
+  
+  // Clear any existing polling interval
+  if (pollingIntervalRef.current) {
+    clearInterval(pollingIntervalRef.current);
+    pollingIntervalRef.current = null;
+  }
+  
+  console.log('Conversation changed to:', conversation.id);
+  
+  // First load - check if we have cached messages
+  if (messagesCache[conversation.id]) {
+    console.log('Using cached messages while loading fresh data');
+    // Set messages from cache
+    setMessages(messagesCache[conversation.id]);
+    setIsInitialLoading(false);
     
-    // Fetch messages initially
+    // Still fetch fresh data in the background
+    backgroundFetchMessages(conversation.id);
+  } else {
+    // No cache - do a regular fetch
+    console.log('No cache found, loading messages from API');
     fetchMessages(conversation.id);
-    
-    // Set up WebSocket connection
-    const channel = webSocketService.subscribeToConversation(conversation.id, {
-      onNewMessage: (data) => {
-        // Only add messages from the other party
-        if (data.sender_type !== 'agent') {
-          // If we're already showing this message (by ID), don't add it again
-          if (!messages.some(m => m.id === data.id)) {
-            setMessages(prevMessages => [...prevMessages, data]);
-          }
-        }
-      },
-      onTyping: (data) => {
-        // Set typing indicator if it's from the visitor
-        if (data.visitor_id !== 'agent') {
-          setTyping(data.is_typing);
-        }
+  }
+  
+  // Set up WebSocket connection
+  const channel = webSocketService.subscribeToConversation(conversation.id, {
+    onNewMessage: handleNewWebSocketMessage,
+    onTyping: (data) => {
+      // Set typing indicator if it's from the visitor
+      if (data.sender_type !== 'agent' && data.sender_type !== 'self') {
+        setTyping(data.is_typing);
       }
-    });
-    
-    // Clean up WebSocket connection
-    return () => {
-      webSocketService.unsubscribeFromConversation(conversation.id);
-    };
-  }, [conversation]);
+    },
+    onError: (error) => {
+      console.error('WebSocket error:', error);
+      if (isActiveRef.current) {
+        showError('Connection issue. Some messages may be delayed.');
+      }
+    }
+  });
+  
+  // Start immediate polling
+  console.log('Setting up polling for conversation:', conversation.id);
+  pollingIntervalRef.current = setInterval(() => {
+    console.log('Polling triggered for new messages...');
+    if (isActiveRef.current) {
+      backgroundFetchMessages(conversation.id);
+    }
+  }, 8000);
+  
+  // Clean up WebSocket and polling
+  return () => {
+    console.log('Cleaning up WebSocket and polling');
+    webSocketService.unsubscribeFromConversation(conversation.id);
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  };
+}, [conversation?.id]);
+
 
   // Scroll to bottom when messages change
   useEffect(() => {
     scrollToBottom();
+    
+    // Update last message time reference for efficient polling
+    if (messages.length > 0) {
+      const sortedMessages = [...messages].sort((a, b) => 
+        new Date(b.created_at) - new Date(a.created_at)
+      );
+      lastMessageTimeRef.current = sortedMessages[0].created_at;
+    }
   }, [messages]);
+  
+  // Handle new messages from WebSocket
+  const handleNewWebSocketMessage = (data) => {
+    // Only add messages that we don't already have
+    if (!messages.some(m => m.id === data.id)) {
+      setMessages(prevMessages => {
+        // Remove any temporary messages that might have been added optimistically
+        const withoutTemp = prevMessages.filter(m => 
+          !(m.temp && m.content === data.content)
+        );
+        const newMessages = [...withoutTemp, data];
+        
+        // Update cache
+        messagesCache[conversation.id] = newMessages;
+        
+        return newMessages;
+      });
+    }
+  };
+  
+  const setupPolling = (conversationId) => {
+    // Poll every 8 seconds as a backup for WebSocket, but only when component is active
+    pollingIntervalRef.current = setInterval(() => {
+      // Only do a background fetch if component is active and we're not already loading
+      if (isActiveRef.current && !isInitialLoading && !isBackgroundFetching) {
+        backgroundFetchMessages(conversationId);
+      }
+    }, 12000);
+  };
   
   const adjustTextareaHeight = () => {
     if (textareaRef.current) {
@@ -81,6 +225,13 @@ const ActiveChatArea = ({
       textareaRef.current.style.height = 'auto';
       // Set the height to scrollHeight to accommodate all text
       textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+      // Cap height at a maximum of 120px
+      if (textareaRef.current.scrollHeight > 120) {
+        textareaRef.current.style.height = '120px';
+        textareaRef.current.style.overflowY = 'auto';
+      } else {
+        textareaRef.current.style.overflowY = 'hidden';
+      }
     }
   };
 
@@ -90,48 +241,157 @@ const ActiveChatArea = ({
     }
   };
 
-  // Fetch messages for the conversation
-  const fetchMessages = async (conversationId, silent = false) => {
+  // Fetch messages - used for initial load
+  const fetchMessages = async (conversationId) => {
     try {
-      if (!silent) setLoading(true);
-      if (silent) setSilentRefresh(true);
+      setIsInitialLoading(true);
       
       const response = await axios.get(`${API_URL}/conversations/${conversationId}`);
       
       if (response.data.status === 'success') {
-        // Filter out any temporary messages that we added optimistically
         const newMessages = response.data.messages || [];
         
-        // If we have temp messages, we need to be careful not to lose them
-        if (messages.some(m => m.temp)) {
-          // Merge the messages, keeping temp ones if they don't exist on the server
-          const mergedMessages = [...newMessages];
-          
-          // Add temp messages that aren't in the response
-          messages.filter(m => m.temp).forEach(tempMsg => {
-            const exists = newMessages.some(m => 
-              m.content === tempMsg.content && 
-              Math.abs(new Date(m.created_at) - new Date(tempMsg.created_at)) < 60000
-            );
-            
-            if (!exists) {
-              mergedMessages.push(tempMsg);
-            }
-          });
-          
-          setMessages(mergedMessages);
-        } else {
-          setMessages(newMessages);
-        }
+        setMessages(newMessages);
         
-        // Cache messages for faster loading next time
+        // Cache the messages for faster loading next time
         messagesCache[conversationId] = newMessages;
+      } else {
+        showError('Could not load messages. Please try again.');
       }
     } catch (error) {
       console.error('Error fetching messages:', error);
+      showError('Network error. Could not load messages.');
+      
+      // Add a system message to the chat
+      addSystemMessage('Could not load messages. Please check your connection.');
     } finally {
-      if (!silent) setLoading(false);
-      if (silent) setSilentRefresh(false);
+      setIsInitialLoading(false);
+    }
+  };
+  
+  // Background fetch - silent refresh
+const backgroundFetchMessages = async (conversationId) => {
+  if (!conversationId) return;
+  
+  // Check if this is the current conversation 
+  // This prevents issues with background fetches for old conversations
+  if (conversation?.id !== conversationId) {
+    console.log('Skipping fetch for old conversation:', conversationId);
+    return;
+  }
+  
+  // Store current scroll position before updating
+  const messagesContainer = document.querySelector('.overflow-y-auto');
+  const scrollTop = messagesContainer?.scrollTop || 0;
+  const scrollHeight = messagesContainer?.scrollHeight || 0;
+  const clientHeight = messagesContainer?.clientHeight || 0;
+  const isAtBottom = messagesContainer ? 
+    (scrollTop + clientHeight >= scrollHeight - 50) : 
+    true;
+    
+  // Save a reference to the current messages length before fetching
+  const currentMessagesLength = messages.length;
+  
+  console.log('Background fetch started for conversation:', conversationId);
+  
+  try {
+    // Always show loading indicator
+    setIsBackgroundFetching(true);
+    
+    const response = await axios.get(`${API_URL}/conversations/${conversationId}`);
+    
+    if (response.data.status === 'success') {
+      const newMessages = response.data.messages || [];
+      console.log(`Fetched ${newMessages.length} messages, current: ${currentMessagesLength}`);
+      
+      // Only proceed if this is still the active conversation
+      if (conversation?.id !== conversationId) {
+        console.log('Conversation changed during fetch, discarding results');
+        return;
+      }
+      
+      // Always process messages to ensure we catch status updates
+      // Merge with existing messages, keeping temp ones
+      const tempMessages = messages.filter(m => m.temp);
+      const mergedMessages = [...newMessages, ...tempMessages];
+      
+      // Remove duplicates based on id
+      const uniqueMessages = Array.from(
+        new Map(mergedMessages.map(m => [m.id, m])).values()
+      );
+      
+      // Update cache first
+      messagesCache[conversationId] = uniqueMessages;
+      
+      // Update messages (this will cause re-render)
+      setMessages(uniqueMessages);
+      
+      // After state update, restore scroll position in the next tick
+      setTimeout(() => {
+        // Double check if the messages container still exists
+        // and if this is still the active conversation
+        const updatedContainer = document.querySelector('.overflow-y-auto');
+        if (updatedContainer && conversation?.id === conversationId) {
+          if (isAtBottom) {
+            // If user was at bottom, keep them at bottom
+            updatedContainer.scrollTop = updatedContainer.scrollHeight;
+          } else {
+            // If message count didn't change, maintain exact position
+            if (newMessages.length === currentMessagesLength) {
+              updatedContainer.scrollTop = scrollTop;
+            } else {
+              // If messages were added/removed, try to maintain relative position
+              // This prevents scroll jumping when messages are added at the top
+              const ratio = scrollTop / scrollHeight;
+              updatedContainer.scrollTop = ratio * updatedContainer.scrollHeight;
+            }
+          }
+        }
+      }, 10);
+    }
+  } catch (error) {
+    console.error('Error in background fetch:', error);
+  } finally {
+    // Ensure loading state is visible for at least 1 second
+    setTimeout(() => {
+      if (conversation?.id === conversationId) {
+        setIsBackgroundFetching(false);
+      }
+    }, 1500);
+  }
+};
+  
+  // Handle closing a conversation with loading state
+  const handleCloseConversation = async (conversationId) => {
+    if (isClosing) return; // Prevent double-clicks
+    
+    setIsClosing(true);
+    
+    try {
+      await onCloseConversation(conversationId);
+      // Success will be handled by parent component
+    } catch (error) {
+      console.error('Error closing conversation:', error);
+      showError('Failed to close conversation. Please try again.');
+    } finally {
+      setIsClosing(false);
+    }
+  };
+  
+  // Handle reopening a conversation with loading state
+  const handleReopenConversation = async (conversationId) => {
+    if (isReopening) return; // Prevent double-clicks
+    
+    setIsReopening(true);
+    
+    try {
+      await onJoin(conversationId);
+      // Success will be handled by parent component
+    } catch (error) {
+      console.error('Error reopening conversation:', error);
+      showError('Failed to reopen conversation. Please try again.');
+    } finally {
+      setIsReopening(false);
     }
   };
 
@@ -142,19 +402,28 @@ const ActiveChatArea = ({
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (message.trim()) {
-      // Optimistically add message to UI
+      // Generate a temporary ID and timestamp
+      const tempId = 'temp-' + Date.now();
+      const tempTimestamp = new Date().toISOString();
+      
+      // Create optimistic temporary message
       const tempMessage = {
-        id: 'temp-' + Date.now(),
+        id: tempId,
         conversation_id: conversation.id,
         type: 'text',
         sender_type: 'agent',
         content: message,
-        created_at: new Date().toISOString(),
+        created_at: tempTimestamp,
         is_delivered: false,
-        temp: true // Flag to identify temporary messages
+        is_read: false,
+        temp: true
       };
       
+      // Add to UI immediately
       setMessages(prev => [...prev, tempMessage]);
+      
+      // Update the cache with the optimistic message
+      messagesCache[conversation.id] = [...(messagesCache[conversation.id] || []), tempMessage];
       
       // Clear input field
       const sentMessage = message;
@@ -163,13 +432,30 @@ const ActiveChatArea = ({
       // Clear typing indicator
       webSocketService.sendTypingIndicator(conversation.id, false);
       
-      // Call parent handler (which will make the API call)
-      await onSendMessage(conversation.id, sentMessage);
-      
-      // Silent refresh after a delay to get the real message from the server
-      setTimeout(() => {
-        fetchMessages(conversation.id, true);
-      }, 1000);
+      try {
+        // Call API to send the message
+        const result = await onSendMessage(conversation.id, sentMessage);
+        
+        // After successful send, fetch messages in background to update the temp message
+        // We use a timeout to give the server time to process the message
+        setTimeout(() => {
+          if (isActiveRef.current) {
+            backgroundFetchMessages(conversation.id);
+          }
+        }, 1000);
+      } catch (error) {
+        console.error('Failed to send message:', error);
+        
+        // Mark the temp message as failed
+        setMessages(prev => prev.map(m => 
+          m.id === tempId 
+            ? { ...m, sendFailed: true }
+            : m
+        ));
+        
+        // Show error toast
+        showError('Message failed to send. Click the message to retry.');
+      }
     }
   };
 
@@ -184,6 +470,22 @@ const ActiveChatArea = ({
       if (message.trim()) {
         handleSendMessage(e);
       }
+    }
+  };
+  
+  // Handle retry for failed messages
+  const handleRetryMessage = (tempId) => {
+    // Find the failed message
+    const failedMessage = messages.find(m => m.id === tempId);
+    if (failedMessage) {
+      // Remove the failed message
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      
+      // Set the message content back in the input
+      setMessage(failedMessage.content);
+      
+      // Focus the textarea
+      textareaRef.current?.focus();
     }
   };
 
@@ -210,6 +512,11 @@ const ActiveChatArea = ({
       }
       
       groups[dateStr].push(message);
+    });
+    
+    // Sort messages within each group
+    Object.keys(groups).forEach(date => {
+      groups[date].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
     });
     
     return groups;
@@ -243,11 +550,25 @@ const ActiveChatArea = ({
 
   return (
     <div 
-      className="flex-1 flex flex-col h-full"
+      className="flex-1 flex flex-col h-full relative"
       style={{ 
         background: 'linear-gradient(to bottom, #e8ddd3 0%, #d4c4b0 100%)'
       }}
     >
+      {/* Error Toast Message */}
+      {errorMessage && (
+        <div className="absolute top-16 left-1/2 transform -translate-x-1/2 z-50 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg flex items-center">
+          <i className="fas fa-exclamation-circle mr-2"></i>
+          <span>{errorMessage}</span>
+          <button 
+            onClick={clearError}
+            className="ml-3 text-white hover:text-red-100"
+          >
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+      )}
+      
       {/* Chat Header */}
       <div className="px-4 md:px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between">
         <div className="flex items-center space-x-3">
@@ -256,7 +577,7 @@ const ActiveChatArea = ({
           </button>
           <div className="relative cursor-pointer" onClick={onShowUserInfo}>
             <div className={`w-10 h-10 rounded-full ${avatarBgClass} flex items-center justify-center text-white font-bold shadow-sm`}>
-              {conversation.initial}
+              {conversation.initial || 'V'}
             </div>
             {typing && (
               <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full"></span>
@@ -267,7 +588,7 @@ const ActiveChatArea = ({
               onClick={onShowUserInfo}
               className="font-semibold text-gray-900 hover:text-blue-600 transition text-left"
             >
-              {conversation.name}
+              {conversation.name || 'Visitor'}
             </button>
             {typing ? (
               <p className="text-xs text-green-600 font-medium">typing...</p>
@@ -286,19 +607,54 @@ const ActiveChatArea = ({
             <i className="fas fa-info-circle text-gray-600 text-lg"></i>
           </button>
           <button 
-            onClick={() => onJoin(conversation.id)}
-            className="px-3 md:px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium text-sm transition"
+            onClick={() => handleCloseConversation(conversation.id)}
+            disabled={isClosing}
+            className="px-3 md:px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium text-sm transition relative"
           >
-            <i className="fas fa-check mr-1"></i><span className="hidden sm:inline">Solve</span>
+            {isClosing ? (
+              <>
+                <span className="opacity-0">Close</span>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              </>
+            ) : (
+              <>
+                <i className="fas fa-times mr-1"></i>
+                <span className="hidden sm:inline">Close</span>
+              </>
+            )}
+          </button>
+          <button 
+            onClick={() => handleReopenConversation(conversation.id)}
+            disabled={isReopening}
+            className="px-3 md:px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium text-sm transition relative"
+          >
+            {isReopening ? (
+              <>
+                <span className="opacity-0">Reopen</span>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              </>
+            ) : (
+              <>
+                <i className="fas fa-sync-alt mr-1"></i>
+                <span className="hidden sm:inline">Reopen</span>
+              </>
+            )}
           </button>
         </div>
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-3">
-        {loading ? (
-          <div className="flex justify-center items-center h-full">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-3 relative">
+        {isInitialLoading && messages.length === 0 ? (
+          <div className="flex justify-center items-center py-10">
+            <div className="flex flex-col items-center">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mb-3"></div>
+              <p className="text-gray-600">Loading messages...</p>
+            </div>
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full">
@@ -325,25 +681,27 @@ const ActiveChatArea = ({
                     key={msg.id} 
                     className={`flex items-start space-x-2 ${msg.sender_type === 'agent' ? 'justify-end' : ''}`}
                   >
-                    {msg.sender_type !== 'agent' && (
+                    {msg.sender_type !== 'agent' && msg.type !== 'system' && (
                       <div className={`w-8 h-8 rounded-full ${avatarBgClass} flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 shadow-sm`}>
-                        {conversation.initial}
+                        {conversation.initial || 'V'}
                       </div>
                     )}
                     
-                    <div className={`max-w-[70%] ${msg.sender_type === 'agent' ? '' : 'ml-2'}`}>
+                    <div className={`max-w-[70%] ${msg.sender_type === 'agent' ? '' : msg.type !== 'system' ? 'ml-2' : ''}`}>
                       {msg.type === 'system' ? (
                         // System message
-                        <div className="bg-gray-100 text-gray-600 rounded-lg px-4 py-2 text-center text-xs italic">
+                        <div className="bg-gray-100 text-gray-600 rounded-lg px-4 py-2 text-center text-xs italic mx-auto max-w-md">
                           {msg.content}
                         </div>
                       ) : msg.type === 'image' ? (
                         // Image message - set max width/height constraints
-                        <div className={`rounded-2xl shadow-sm overflow-hidden ${
-                          msg.sender_type === 'agent' 
-                            ? 'bg-blue-500 rounded-br-none' 
-                            : 'bg-white rounded-bl-none'
-                        }`}>
+                        <div 
+                          className={`rounded-2xl shadow-sm overflow-hidden ${
+                            msg.sender_type === 'agent' 
+                              ? 'bg-blue-500 rounded-br-none' 
+                              : 'bg-white rounded-bl-none'
+                          }`}
+                        >
                           <div className="max-h-60 overflow-hidden flex justify-center">
                             <img 
                               src={msg.file_url} 
@@ -385,33 +743,56 @@ const ActiveChatArea = ({
                         </div>
                       ) : (
                         // Text message
-                        <div className={`${
-                          msg.sender_type === 'agent' 
-                            ? 'bg-blue-500 text-white rounded-2xl rounded-br-none' 
-                            : 'bg-white text-gray-800 rounded-2xl rounded-bl-none'
-                        } px-4 py-2.5 shadow-sm`}>
-                          <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                        <div 
+                          className={`${
+                            msg.sender_type === 'agent' 
+                              ? `bg-blue-500 text-white rounded-2xl rounded-br-none ${msg.sendFailed ? 'border-2 border-red-500' : ''}` 
+                              : 'bg-white text-gray-800 rounded-2xl rounded-bl-none'
+                          } px-4 py-2.5 shadow-sm ${msg.sendFailed ? 'cursor-pointer' : ''}`}
+                          onClick={() => msg.sendFailed ? handleRetryMessage(msg.id) : null}
+                        >
+                          <p className="text-sm whitespace-pre-wrap break-words">
+                            {msg.content}
+                            {msg.sendFailed && (
+                              <span className="ml-2 text-red-300">
+                                <i className="fas fa-exclamation-circle"></i>
+                              </span>
+                            )}
+                          </p>
                         </div>
                       )}
                       
-                      <div className={`flex items-center mt-1 text-xs text-gray-500 ${
-                        msg.sender_type === 'agent' ? 'justify-end' : 'justify-start ml-1'
-                      }`}>
-                        <span>{formatMessageTime(msg.created_at)}</span>
-                        {msg.sender_type === 'agent' && (
-                          <span className="ml-1">
-                            {msg.is_read ? (
-                              <i className="fas fa-check-double text-blue-500"></i>
-                            ) : msg.is_delivered ? (
-                              <i className="fas fa-check text-gray-400"></i>
-                            ) : msg.temp ? (
-                              <i className="fas fa-clock text-gray-400"></i>
-                            ) : (
-                              <i className="fas fa-check text-gray-400"></i>
-                            )}
-                          </span>
-                        )}
-                      </div>
+                      {msg.type !== 'system' && (
+                        <div className={`flex items-center mt-1 text-xs text-gray-500 ${
+                          msg.sender_type === 'agent' ? 'justify-end' : 'justify-start ml-1'
+                        }`}>
+                          <span>{formatMessageTime(msg.created_at)}</span>
+                          {msg.sender_type === 'agent' && (
+                            <span className="ml-1">
+                              {msg.sendFailed ? (
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRetryMessage(msg.id);
+                                  }} 
+                                  title="Failed to send, click to retry"
+                                  className="text-red-500 hover:text-red-700"
+                                >
+                                  <i className="fas fa-exclamation-circle"></i>
+                                </button>
+                              ) : msg.is_read ? (
+                                <i className="fas fa-check-double text-blue-500"></i>
+                              ) : msg.is_delivered ? (
+                                <i className="fas fa-check text-gray-400"></i>
+                              ) : msg.temp ? (
+                                <i className="fas fa-clock text-gray-400"></i>
+                              ) : (
+                                <i className="fas fa-check text-gray-400"></i>
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -424,7 +805,7 @@ const ActiveChatArea = ({
         {typing && (
           <div className="flex items-start space-x-2">
             <div className={`w-8 h-8 rounded-full ${avatarBgClass} flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 shadow-sm`}>
-              {conversation.initial}
+              {conversation.initial || 'V'}
             </div>
             <div className="bg-white rounded-2xl rounded-bl-none px-4 py-2.5 shadow-sm">
               <div className="flex items-center space-x-1">
@@ -436,10 +817,13 @@ const ActiveChatArea = ({
           </div>
         )}
         
-        {/* Silent refresh indicator */}
-        {silentRefresh && (
-          <div className="absolute bottom-20 right-4 w-5 h-5 opacity-30">
-            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
+        {/* Background loading indicator (small and visible inside the chat area) */}
+        {isBackgroundFetching && (
+          <div className="flex justify-center mb-4">
+            <div className="flex items-center justify-center bg-white/70 backdrop-blur-sm rounded-full px-3 py-1 shadow-sm">
+              <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mr-2"></div>
+              <span className="text-xs text-blue-600">Updating...</span>
+            </div>
           </div>
         )}
         
@@ -454,10 +838,20 @@ const ActiveChatArea = ({
           <div className="flex flex-col space-y-3">
             <div className="flex items-center justify-center space-x-3">
               <button 
-                onClick={() => onJoin(conversation.id)} 
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition"
+                onClick={() => handleReopenConversation(conversation.id)} 
+                disabled={isReopening}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition relative"
               >
-                Join conversation
+                {isReopening ? (
+                  <>
+                    <span className="opacity-0">Join conversation</span>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  </>
+                ) : (
+                  <>Join conversation</>
+                )}
               </button>
               <button className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg font-medium text-sm transition">
                 Add note
@@ -470,10 +864,18 @@ const ActiveChatArea = ({
         // Active Chat Input with auto-growing textarea
         <form onSubmit={handleSendMessage} className="bg-white border-t border-gray-200 p-3 md:p-4">
           <div className="flex items-end space-x-2">
-            <button type="button" className="p-2 text-gray-500 hover:text-gray-700 transition flex-shrink-0">
+            <button 
+              type="button" 
+              className="p-2 text-gray-500 hover:text-gray-700 transition flex-shrink-0"
+              title="Attach file (coming soon)"
+            >
               <i className="fas fa-paperclip text-xl"></i>
             </button>
-            <button type="button" className="p-2 text-gray-500 hover:text-gray-700 transition flex-shrink-0">
+            <button 
+              type="button" 
+              className="p-2 text-gray-500 hover:text-gray-700 transition flex-shrink-0"
+              title="Emoji (coming soon)"
+            >
               <i className="fas fa-smile text-xl"></i>
             </button>
             

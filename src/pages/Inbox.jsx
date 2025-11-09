@@ -46,7 +46,7 @@ const Inbox = () => {
       if (view === 'list') {
         refreshConversations();
       }
-    }, 30000); // Every 30 seconds
+    }, 8000); // Every 30 seconds
     
     return () => clearInterval(interval);
   }, [refreshConversations, view]);
