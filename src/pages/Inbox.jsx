@@ -25,6 +25,21 @@ const Inbox = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('open');
   const [tabLoading, setTabLoading] = useState(false);
+
+
+   // Handle closing a conversation
+  const handleCloseConversation = async (id) => {
+  try {
+    // Update the conversation state to 'closed'
+    await updateConversationState(id, 'closed');
+    
+    // Hard refresh the page instead of just refreshing component state
+    window.location.reload();
+  } catch (error) {
+    console.error('Failed to close conversation:', error);
+    // You could add error handling/notification here
+  }
+};
   
   // Get the active conversation
   const activeConversation = conversations.find(conv => conv.id === activeConversationId);
@@ -41,15 +56,25 @@ const Inbox = () => {
   }, []);
 
   // Refresh data periodically
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (view === 'list') {
-        refreshConversations();
-      }
-    }, 8000); // Every 30 seconds
+  // useEffect(() => {
+  //   const interval = setInterval(() => {
+  //     if (view === 'list') {
+  //       refreshConversations();
+  //     }
+  //   }, 8000); // Every 30 seconds
     
-    return () => clearInterval(interval);
-  }, [refreshConversations, view]);
+  //   return () => clearInterval(interval);
+  // }, [refreshConversations, view]);
+useEffect(() => {
+  // Set up polling interval that works regardless of view
+  const interval = setInterval(() => {
+    // Always refresh conversations, regardless of current view
+    refreshConversations();
+  }, 8000); 
+  
+  // Clean up interval on unmount
+  return () => clearInterval(interval);
+}, [refreshConversations]); // Remove 'view' from dependencies
 
   // Select a conversation
   const handleSelectConversation = (id) => {
@@ -80,10 +105,19 @@ const Inbox = () => {
     setView('chat');
   };
 
-  // Join a pending chat
-  const handleJoinChat = (id) => {
-    updateConversationState(id, 'active');
-  };
+// Join a pending chat
+const handleJoinChat = async (id) => {
+  try {
+    // Update the conversation state
+    await updateConversationState(id, 'active');
+    
+    // Hard refresh but maintain the URL
+    const currentUrl = window.location.href;
+    window.location.href = currentUrl;
+  } catch (error) {
+    console.error('Failed to join/reopen conversation:', error);
+  }
+};
 
   // Send a message
   const handleSendMessage = async (conversationId, text) => {
@@ -300,18 +334,19 @@ const Inbox = () => {
       </div>
       
       {/* Active Chat Area */}
-      {activeConversation && (view === 'chat') && (
-        <div className={`${isMobile ? 'w-full' : 'flex-1'}`}>
-          <ActiveChatArea 
-            conversation={activeConversation}
-            onJoin={handleJoinChat}
-            onBack={handleCloseChat}
-            onSendMessage={handleSendMessage}
-            onShowUserInfo={handleShowUserInfo}
-            getAvatarBg={getAvatarBg}
-          />
-        </div>
-      )}
+{activeConversation && (view === 'chat') && (
+  <div className={`${isMobile ? 'w-full' : 'flex-1'}`}>
+    <ActiveChatArea 
+      conversation={activeConversation}
+      onJoin={handleJoinChat}
+      onBack={handleCloseChat}
+      onSendMessage={handleSendMessage}
+      onShowUserInfo={handleShowUserInfo}
+      onCloseConversation={handleCloseConversation}
+      getAvatarBg={getAvatarBg}
+    />
+  </div>
+)}
 
       {/* Customer Info Panel */}
       {activeConversation && (view === 'info') && (

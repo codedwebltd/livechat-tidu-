@@ -25,6 +25,9 @@ const ActiveChatArea = ({
   const [errorTimeout, setErrorTimeout] = useState(null);
   const [isClosing, setIsClosing] = useState(false);
   const [isReopening, setIsReopening] = useState(false);
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const [scrollTimeout, setScrollTimeout] = useState(null);
+
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
   const pollingIntervalRef = useRef(null);
@@ -70,18 +73,53 @@ const ActiveChatArea = ({
     setMessages(prev => [...prev, systemMessage]);
   };
   
-  useEffect(() => {
-    // Set active on mount
-    isActiveRef.current = true;
+useEffect(() => {
+  // Set active on mount
+  isActiveRef.current = true;
+  
+  // Add scroll event listener to detect user scrolling
+  const messagesContainer = document.querySelector('.flex-1.overflow-y-auto');
+  
+  const handleScroll = () => {
+    // User is scrolling - pause polling
+    setIsUserScrolling(true);
     
-    // Cleanup on unmount
-    return () => {
-      isActiveRef.current = false;
-      if (errorTimeout) {
-        clearTimeout(errorTimeout);
-      }
-    };
-  }, []);
+    // Clear any existing timeout
+    if (scrollTimeout) {
+      clearTimeout(scrollTimeout);
+    }
+    
+    // Set a new timeout to resume polling after user stops scrolling
+    const timeout = setTimeout(() => {
+      setIsUserScrolling(false);
+      console.log('User stopped scrolling, polling resumed');
+    }, 8000); // 8 seconds pause after last scroll
+    
+    setScrollTimeout(timeout);
+  };
+  
+  if (messagesContainer) {
+    messagesContainer.addEventListener('scroll', handleScroll);
+  }
+  
+  // Cleanup on unmount
+  return () => {
+    isActiveRef.current = false;
+    
+    // Clean up scroll listener
+    if (messagesContainer) {
+      messagesContainer.removeEventListener('scroll', handleScroll);
+    }
+    
+    // Clean up all timeouts
+    if (errorTimeout) {
+      clearTimeout(errorTimeout);
+    }
+    if (scrollTimeout) {
+      clearTimeout(scrollTimeout);
+    }
+  };
+}, []);
   
   useEffect(() => {
     // Adjust textarea height when component mounts
@@ -159,11 +197,15 @@ useEffect(() => {
   // Start immediate polling
   console.log('Setting up polling for conversation:', conversation.id);
   pollingIntervalRef.current = setInterval(() => {
-    console.log('Polling triggered for new messages...');
-    if (isActiveRef.current) {
+    // Only poll if user is not actively scrolling/reading
+    if (isActiveRef.current && !isUserScrolling) {
+      console.log('Polling triggered for new messages...');
       backgroundFetchMessages(conversation.id);
+    } else if (isUserScrolling) {
+      console.log('Polling paused - user is scrolling or reading');
     }
-  }, 8000);
+  }, 20000);
+
   
   // Clean up WebSocket and polling
   return () => {
@@ -273,28 +315,23 @@ useEffect(() => {
 const backgroundFetchMessages = async (conversationId) => {
   if (!conversationId) return;
   
-  // Check if this is the current conversation 
-  // This prevents issues with background fetches for old conversations
-  if (conversation?.id !== conversationId) {
-    console.log('Skipping fetch for old conversation:', conversationId);
+  // Skip if user is actively scrolling/reading
+  if (isUserScrolling) {
+    console.log('Skipping background fetch - user is scrolling/reading');
     return;
   }
-  
-  // Store current scroll position before updating
-  const messagesContainer = document.querySelector('.overflow-y-auto');
-  const scrollTop = messagesContainer?.scrollTop || 0;
-  const scrollHeight = messagesContainer?.scrollHeight || 0;
-  const clientHeight = messagesContainer?.clientHeight || 0;
-  const isAtBottom = messagesContainer ? 
-    (scrollTop + clientHeight >= scrollHeight - 50) : 
-    true;
-    
-  // Save a reference to the current messages length before fetching
-  const currentMessagesLength = messages.length;
   
   console.log('Background fetch started for conversation:', conversationId);
   
   try {
+    // Get the messages container
+    const messagesContainer = document.querySelector('.flex-1.overflow-y-auto');
+    
+    // Check if user is at the bottom
+    const isAtBottom = messagesContainer ? 
+      (messagesContainer.scrollTop + messagesContainer.clientHeight >= 
+       messagesContainer.scrollHeight - 50) : true;
+    
     // Always show loading indicator
     setIsBackgroundFetching(true);
     
@@ -302,13 +339,7 @@ const backgroundFetchMessages = async (conversationId) => {
     
     if (response.data.status === 'success') {
       const newMessages = response.data.messages || [];
-      console.log(`Fetched ${newMessages.length} messages, current: ${currentMessagesLength}`);
-      
-      // Only proceed if this is still the active conversation
-      if (conversation?.id !== conversationId) {
-        console.log('Conversation changed during fetch, discarding results');
-        return;
-      }
+      console.log(`Fetched ${newMessages.length} messages, current: ${messages.length}`);
       
       // Always process messages to ensure we catch status updates
       // Merge with existing messages, keeping temp ones
@@ -320,63 +351,55 @@ const backgroundFetchMessages = async (conversationId) => {
         new Map(mergedMessages.map(m => [m.id, m])).values()
       );
       
-      // Update cache first
-      messagesCache[conversationId] = uniqueMessages;
-      
-      // Update messages (this will cause re-render)
+      // Update messages
       setMessages(uniqueMessages);
       
-      // After state update, restore scroll position in the next tick
-      setTimeout(() => {
-        // Double check if the messages container still exists
-        // and if this is still the active conversation
-        const updatedContainer = document.querySelector('.overflow-y-auto');
-        if (updatedContainer && conversation?.id === conversationId) {
-          if (isAtBottom) {
-            // If user was at bottom, keep them at bottom
-            updatedContainer.scrollTop = updatedContainer.scrollHeight;
-          } else {
-            // If message count didn't change, maintain exact position
-            if (newMessages.length === currentMessagesLength) {
-              updatedContainer.scrollTop = scrollTop;
-            } else {
-              // If messages were added/removed, try to maintain relative position
-              // This prevents scroll jumping when messages are added at the top
-              const ratio = scrollTop / scrollHeight;
-              updatedContainer.scrollTop = ratio * updatedContainer.scrollHeight;
-            }
+      // Update cache
+      messagesCache[conversationId] = uniqueMessages;
+      
+      // ONLY auto-scroll to bottom if user was already at the bottom
+      // and we're not in a scrolling/reading state
+      if (isAtBottom && !isUserScrolling) {
+        setTimeout(() => {
+          if (messagesContainer) {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
           }
-        }
-      }, 10);
+        }, 100);
+      }
     }
   } catch (error) {
     console.error('Error in background fetch:', error);
   } finally {
     // Ensure loading state is visible for at least 1 second
     setTimeout(() => {
-      if (conversation?.id === conversationId) {
-        setIsBackgroundFetching(false);
-      }
+      setIsBackgroundFetching(false);
     }, 1500);
   }
 };
   
   // Handle closing a conversation with loading state
-  const handleCloseConversation = async (conversationId) => {
-    if (isClosing) return; // Prevent double-clicks
-    
-    setIsClosing(true);
-    
-    try {
+const handleCloseConversation = async (conversationId) => {
+  if (isClosing) return; // Prevent double-clicks
+  
+  setIsClosing(true);
+  
+  try {
+    // Check if onCloseConversation exists before calling it
+    if (typeof onCloseConversation === 'function') {
       await onCloseConversation(conversationId);
       // Success will be handled by parent component
-    } catch (error) {
-      console.error('Error closing conversation:', error);
-      showError('Failed to close conversation. Please try again.');
-    } finally {
-      setIsClosing(false);
+    } else {
+      console.error('onCloseConversation is not defined');
+      showError('Close functionality not available. Please refresh the page.');
     }
-  };
+  } catch (error) {
+    console.error('Error closing conversation:', error);
+    showError('Failed to close conversation. Please try again.');
+  } finally {
+    setIsClosing(false);
+  }
+};
+
   
   // Handle reopening a conversation with loading state
   const handleReopenConversation = async (conversationId) => {
