@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useConversations } from '../hooks/useConversations';
 import ActiveChatArea from '../components/ActiveChatArea';
 import CustomerInfo from '../components/CustomerInfo';
+import pusherService from '../services/PusherService';
 
 const Inbox = () => {
-  // Get conversation data from our hook with real API data
   const { 
     conversations, 
     loading, 
@@ -18,113 +18,150 @@ const Inbox = () => {
     refreshConversations
   } = useConversations();
   
-  // State for UI management
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
-  const [view, setView] = useState('list'); // 'list', 'chat', or 'info'
+  const [view, setView] = useState('list');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('open');
   const [tabLoading, setTabLoading] = useState(false);
-
-
-   // Handle closing a conversation
-  const handleCloseConversation = async (id) => {
-  try {
-    // Update the conversation state to 'closed'
-    await updateConversationState(id, 'closed');
-    
-    // Hard refresh the page instead of just refreshing component state
-    window.location.reload();
-  } catch (error) {
-    console.error('Failed to close conversation:', error);
-    // You could add error handling/notification here
-  }
-};
+  const [localConversations, setLocalConversations] = useState(conversations);
+  const [typingConversations, setTypingConversations] = useState({});
   
-  // Get the active conversation
-  const activeConversation = conversations.find(conv => conv.id === activeConversationId);
-
-  // Detect mobile screen size
+  // Track subscribed conversation IDs to prevent re-subscribing
+  const subscribedIdsRef = useRef(new Set());
+  
   useEffect(() => {
-    const handleResize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
+    setLocalConversations(conversations);
+  }, [conversations]);
+
+  useEffect(() => {
+    console.log('🚀 Initializing Pusher for Inbox');
+    pusherService.initialize();
     
+    const widgetChannel = pusherService.pusher.subscribe('widget');
+    
+    widgetChannel.bind('new-conversation', (data) => {
+      console.log('🆕 NEW conversation created:', data);
+      refreshConversations();
+    });
+    
+    return () => {
+      pusherService.pusher.unsubscribe('widget');
+      pusherService.cleanup();
+      subscribedIdsRef.current.clear();
+    };
+  }, []);
+
+  // Subscribe to conversations - ONLY when new IDs appear, not when data changes
+  useEffect(() => {
+    if (localConversations.length === 0) return;
+    
+    localConversations.forEach(conv => {
+      // Skip if already subscribed
+      if (subscribedIdsRef.current.has(conv.id)) return;
+      
+      console.log(`📡 Subscribing to conversation: ${conv.id}`);
+      subscribedIdsRef.current.add(conv.id);
+      
+      pusherService.subscribeToConversation(conv.id, {
+        onNewMessage: (message) => {
+          console.log(`💬 Message in ${conv.id}:`, message);
+          
+          setLocalConversations(prev => prev.map(c => {
+            if (c.id === conv.id) {
+              return {
+                ...c,
+                lastMessage: message.content || message.file_name || 'New message',
+                lastMessageTime: formatTimestamp(message.created_at),
+                hasNewMessages: message.sender_type !== 'agent',
+                isRead: message.sender_type === 'agent'
+              };
+            }
+            return c;
+          }));
+        },
+        onTyping: (data) => {
+          setTypingConversations(prev => ({
+            ...prev,
+            [conv.id]: data.is_typing
+          }));
+        }
+      });
+    });
+    
+    // Cleanup - only unsubscribe from conversations no longer in the list
+    return () => {
+      const currentIds = new Set(localConversations.map(c => c.id));
+      subscribedIdsRef.current.forEach(id => {
+        if (!currentIds.has(id)) {
+          console.log(`🔌 Unsubscribing from conversation: ${id}`);
+          pusherService.unsubscribeFromConversation(id);
+          subscribedIdsRef.current.delete(id);
+        }
+      });
+    };
+  }, [localConversations.length]); // Only depend on LENGTH, not content
+  
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return '';
+    const now = new Date();
+    const date = new Date(timestamp);
+    const diffMs = now - date;
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+    
+    if (diffDay > 30) return `${Math.floor(diffDay / 30)}mo`;
+    if (diffDay > 0) return `${diffDay}d`;
+    if (diffHour > 0) return `${diffHour}h`;
+    if (diffMin > 0) return `${diffMin}m`;
+    return 'now';
+  };
+
+  const handleCloseConversation = async (id) => {
+    try {
+      await updateConversationState(id, 'closed');
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to close conversation:', error);
+    }
+  };
+  
+  const activeConversation = localConversations.find(conv => conv.id === activeConversationId);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Refresh data periodically
-  // useEffect(() => {
-  //   const interval = setInterval(() => {
-  //     if (view === 'list') {
-  //       refreshConversations();
-  //     }
-  //   }, 8000); // Every 30 seconds
-    
-  //   return () => clearInterval(interval);
-  // }, [refreshConversations, view]);
-useEffect(() => {
-  // Set up polling interval that works regardless of view
-  const interval = setInterval(() => {
-    // Always refresh conversations, regardless of current view
-    refreshConversations();
-  }, 8000); 
-  
-  // Clean up interval on unmount
-  return () => clearInterval(interval);
-}, [refreshConversations]); // Remove 'view' from dependencies
-
-  // Select a conversation
   const handleSelectConversation = (id) => {
     setActiveConversationId(id);
-    if (isMobile) {
-      setView('chat');
-    } else {
-      setView('chat');
-    }
+    setView(isMobile ? 'chat' : 'chat');
   };
 
-  // Close the active chat
   const handleCloseChat = () => {
-    if (isMobile) {
-      setView('list');
-    } else {
-      setActiveConversationId(null);
+    setView(isMobile ? 'list' : 'list');
+    if (!isMobile) setActiveConversationId(null);
+  };
+
+  const handleShowUserInfo = () => setView('info');
+  const handleBackToChat = () => setView('chat');
+
+  const handleJoinChat = async (id) => {
+    try {
+      await updateConversationState(id, 'active');
+      window.location.href = window.location.href;
+    } catch (error) {
+      console.error('Failed to join/reopen conversation:', error);
     }
   };
 
-  // Show user info
-  const handleShowUserInfo = () => {
-    setView('info');
-  };
-
-  // Back to chat from info
-  const handleBackToChat = () => {
-    setView('chat');
-  };
-
-// Join a pending chat
-const handleJoinChat = async (id) => {
-  try {
-    // Update the conversation state
-    await updateConversationState(id, 'active');
-    
-    // Hard refresh but maintain the URL
-    const currentUrl = window.location.href;
-    window.location.href = currentUrl;
-  } catch (error) {
-    console.error('Failed to join/reopen conversation:', error);
-  }
-};
-
-  // Send a message
   const handleSendMessage = async (conversationId, text) => {
     await sendMessage(conversationId, text);
   };
 
-  // Handle search
   const handleSearch = (e) => {
     e.preventDefault();
     setTabLoading(true);
@@ -132,74 +169,48 @@ const handleJoinChat = async (id) => {
     setTimeout(() => setTabLoading(false), 500);
   };
 
-  // Handle filter change
   const handleFilterChange = (status) => {
-    // Don't do anything if we're already on this filter
     if (status === activeFilter) return;
-    
-    // Set loading state
     setTabLoading(true);
-    
-    // Update UI
     setActiveFilter(status);
-    
-    // Apply filter
     filterByStatus(status);
-    
-    // Reset loading state after a delay
-    // This ensures we show the spinner for at least a brief moment for better UX
-    setTimeout(() => {
-      setTabLoading(false);
-    }, 500);
+    setTimeout(() => setTabLoading(false), 500);
   };
 
-  // Manual refresh
   const handleManualRefresh = () => {
     setTabLoading(true);
     refreshConversations().then(() => {
-      setTimeout(() => {
-        setTabLoading(false);
-      }, 300);
+      setTimeout(() => setTabLoading(false), 300);
     });
   };
 
-  // Get avatar background color
   const getAvatarBg = (color) => {
     const colorMap = {
-      'yellow': 'bg-yellow-500',
-      'blue': 'bg-blue-500',
-      'green': 'bg-green-500',
-      'red': 'bg-red-500',
-      'purple': 'bg-purple-500',
-      'indigo': 'bg-indigo-500',
-      'pink': 'bg-pink-500',
-      'gray': 'bg-gray-500'
+      'yellow': 'bg-yellow-500', 'blue': 'bg-blue-500', 'green': 'bg-green-500',
+      'red': 'bg-red-500', 'purple': 'bg-purple-500', 'indigo': 'bg-indigo-500',
+      'pink': 'bg-pink-500', 'gray': 'bg-gray-500'
     };
     return colorMap[color] || 'bg-blue-500';
   };
 
   return (
     <div className="h-[calc(100vh-73px)] flex overflow-hidden bg-gray-50">
-      {/* Conversations List */}
       <div className={`${(isMobile && (view === 'chat' || view === 'info')) ? 'hidden' : 'w-full md:w-96'} border-r border-gray-200`}>
-        <div className="bg-white h-full flex flex-col">
-          {/* Header */}
+        <div className="flex flex-col h-full bg-white">
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-xl font-bold text-gray-900">Inbox</h2>
               <button 
                 onClick={handleManualRefresh}
-                className="p-2 hover:bg-gray-100 rounded-lg transition"
-                title="Refresh"
+                className="p-2 transition rounded-lg hover:bg-gray-100"
                 disabled={loading || tabLoading}
               >
                 <i className={`fas fa-sync-alt text-gray-600 ${(loading || tabLoading) ? 'animate-spin' : ''}`}></i>
               </button>
             </div>
             
-            {/* Search */}
             <form onSubmit={handleSearch} className="relative">
-              <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+              <i className="absolute text-gray-400 -translate-y-1/2 fas fa-search left-3 top-1/2"></i>
               <input 
                 type="text" 
                 placeholder="Search in Inbox..." 
@@ -210,7 +221,6 @@ const handleJoinChat = async (id) => {
             </form>
           </div>
 
-          {/* Filter Tabs */}
           <div className="px-4 py-3 border-b border-gray-200">
             <div className="flex items-center space-x-2">
               <button 
@@ -235,40 +245,35 @@ const handleJoinChat = async (id) => {
                 Archived
               </button>
               
-              {/* Tab loading spinner */}
               {tabLoading && (
-                <div className="ml-2 flex-shrink-0">
-                  <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                <div className="flex-shrink-0 ml-2">
+                  <div className="w-5 h-5 border-2 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Conversations List */}
           <div className="flex-1 overflow-y-auto">
-            {loading && conversations.length === 0 ? (
+            {loading && localConversations.length === 0 ? (
               <div className="flex items-center justify-center h-32">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                <div className="w-8 h-8 border-b-2 border-blue-500 rounded-full animate-spin"></div>
               </div>
             ) : error ? (
               <div className="p-4 text-center text-red-600">
                 <p>{error}</p>
-                <button 
-                  onClick={refreshConversations}
-                  className="mt-2 px-4 py-2 bg-blue-500 text-white rounded-lg"
-                >
+                <button onClick={refreshConversations} className="px-4 py-2 mt-2 text-white bg-blue-500 rounded-lg">
                   Try Again
                 </button>
               </div>
-            ) : conversations.length === 0 ? (
-              <div className="p-4 text-center text-gray-600 flex flex-col items-center py-10">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                  <i className="fas fa-inbox text-gray-400 text-xl"></i>
+            ) : localConversations.length === 0 ? (
+              <div className="flex flex-col items-center p-4 py-10 text-center text-gray-600">
+                <div className="flex items-center justify-center w-16 h-16 mb-4 bg-gray-100 rounded-full">
+                  <i className="text-xl text-gray-400 fas fa-inbox"></i>
                 </div>
                 <p>No {activeFilter} conversations found</p>
               </div>
             ) : (
-              conversations.map((conversation) => (
+              localConversations.map((conversation) => (
                 <div 
                   key={conversation.id}
                   onClick={() => handleSelectConversation(conversation.id)}
@@ -280,9 +285,7 @@ const handleJoinChat = async (id) => {
                 >
                   <div className="flex items-start space-x-3">
                     <div className="relative flex-shrink-0">
-                      <div 
-                        className={`w-12 h-12 rounded-full ${getAvatarBg(conversation.avatarColor)} flex items-center justify-center text-white font-bold shadow-sm`}
-                      >
+                      <div className={`w-12 h-12 rounded-full ${getAvatarBg(conversation.avatarColor)} flex items-center justify-center text-white font-bold shadow-sm`}>
                         {conversation.initial}
                       </div>
                       {conversation.state === 'active' && (
@@ -291,23 +294,26 @@ const handleJoinChat = async (id) => {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
-                        <h3 className="font-semibold text-gray-900 text-sm truncate">
+                        <h3 className="text-sm font-semibold text-gray-900 truncate">
                           {conversation.name}
                           {!conversation.isRead && conversation.hasNewMessages && (
-                            <span className="ml-2 w-2 h-2 inline-block bg-blue-600 rounded-full"></span>
+                            <span className="inline-block w-2 h-2 ml-2 bg-blue-600 rounded-full"></span>
                           )}
                         </h3>
                         <span className="text-xs text-gray-500">{conversation.lastMessageTime}</span>
                       </div>
-                      <p className="text-xs text-gray-500 mb-1">{conversation.type}</p>
-                      <p className="text-sm text-gray-700 truncate">{conversation.lastMessage}</p>
+                      <p className="mb-1 text-xs text-gray-500">{conversation.type}</p>
+                      {typingConversations[conversation.id] ? (
+                        <p className="text-sm font-medium text-green-600">typing...</p>
+                      ) : (
+                        <p className="text-sm text-gray-700 truncate">{conversation.lastMessage}</p>
+                      )}
                     </div>
                   </div>
                 </div>
               ))
             )}
             
-            {/* Pagination - show if needed */}
             {pagination.totalPages > 1 && (
               <div className="flex items-center justify-center py-4 border-t border-gray-200">
                 <button 
@@ -333,22 +339,20 @@ const handleJoinChat = async (id) => {
         </div>
       </div>
       
-      {/* Active Chat Area */}
-{activeConversation && (view === 'chat') && (
-  <div className={`${isMobile ? 'w-full' : 'flex-1'}`}>
-    <ActiveChatArea 
-      conversation={activeConversation}
-      onJoin={handleJoinChat}
-      onBack={handleCloseChat}
-      onSendMessage={handleSendMessage}
-      onShowUserInfo={handleShowUserInfo}
-      onCloseConversation={handleCloseConversation}
-      getAvatarBg={getAvatarBg}
-    />
-  </div>
-)}
+      {activeConversation && (view === 'chat') && (
+        <div className={`${isMobile ? 'w-full' : 'flex-1'}`}>
+          <ActiveChatArea 
+            conversation={activeConversation}
+            onJoin={handleJoinChat}
+            onBack={handleCloseChat}
+            onSendMessage={handleSendMessage}
+            onShowUserInfo={handleShowUserInfo}
+            onCloseConversation={handleCloseConversation}
+            getAvatarBg={getAvatarBg}
+          />
+        </div>
+      )}
 
-      {/* Customer Info Panel */}
       {activeConversation && (view === 'info') && (
         <div className={`${isMobile ? 'w-full' : 'flex-1'}`}>
           <CustomerInfo 
@@ -359,15 +363,14 @@ const handleJoinChat = async (id) => {
         </div>
       )}
       
-      {/* Empty State */}
       {(!activeConversation || activeConversationId === null) && !isMobile && (
-        <div className="flex-1 flex items-center justify-center bg-gray-50">
+        <div className="flex items-center justify-center flex-1 bg-gray-50">
           <div className="text-center">
-            <div className="w-20 h-20 bg-gray-200 rounded-full mx-auto mb-4 flex items-center justify-center">
-              <i className="fas fa-inbox text-gray-400 text-2xl"></i>
+            <div className="flex items-center justify-center w-20 h-20 mx-auto mb-4 bg-gray-200 rounded-full">
+              <i className="text-2xl text-gray-400 fas fa-inbox"></i>
             </div>
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">Select a conversation</h3>
-            <p className="text-gray-500 max-w-sm px-4">Choose a conversation from the list to view messages and respond to your customers</p>
+            <h3 className="mb-2 text-xl font-semibold text-gray-700">Select a conversation</h3>
+            <p className="max-w-sm px-4 text-gray-500">Choose a conversation from the list to view messages and respond to your customers</p>
           </div>
         </div>
       )}
