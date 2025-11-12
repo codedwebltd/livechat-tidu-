@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import authService from '../../services/authService';
 import { useConversations } from '../../hooks/useConversations';
-import pusherService from '../../services/PusherService';
 
 const username = authService.getUserData('name');
 const email = authService.getUserData('email');
@@ -10,61 +9,17 @@ const email = authService.getUserData('email');
 const Sidebar = ({ isOpen, onClose, activePage = 'Dashboard', onNavigate = () => {} }) => {
   const { conversations } = useConversations();
   const [unreadCount, setUnreadCount] = useState(0);
-  const subscribedIdsRef = useRef(new Set());
 
-  // Calculate initial unread count
+  // Calculate unread count from conversations prop
+  // NO Pusher subscriptions - Inbox handles that!
   useEffect(() => {
     const count = conversations.filter(conv => 
       !conv.isRead && conv.hasNewMessages && conv.status === 'open'
     ).length;
     
+    console.log('📊 SIDEBAR: Calculated unread count:', count);
     setUnreadCount(count);
   }, [conversations]);
-
-  // Subscribe to all conversations for real-time updates
-  useEffect(() => {
-    if (conversations.length === 0) return;
-
-    pusherService.initialize();
-    
-    // Subscribe to widget channel for NEW conversations
-    const widgetChannel = pusherService.pusher.subscribe('widget');
-    
-    widgetChannel.bind('new-conversation', () => {
-      console.log('🆕 New conversation - incrementing unread count');
-      setUnreadCount(prev => prev + 1);
-    });
-
-    // Subscribe to each conversation to track new messages
-    conversations.forEach(conv => {
-      // Skip if already subscribed
-      if (subscribedIdsRef.current.has(conv.id)) return;
-      
-      subscribedIdsRef.current.add(conv.id);
-      
-      pusherService.subscribeToConversation(conv.id, {
-        onNewMessage: (message) => {
-          // Only count visitor messages (not agent messages)
-          if (message.sender_type === 'visitor') {
-            console.log('💬 New visitor message in conversation:', conv.id);
-            setUnreadCount(prev => prev + 1);
-          }
-        }
-      });
-    });
-    
-    return () => {
-      pusherService.pusher.unsubscribe('widget');
-      
-      // Clean up conversation subscriptions
-      conversations.forEach(conv => {
-        if (subscribedIdsRef.current.has(conv.id)) {
-          pusherService.unsubscribeFromConversation(conv.id);
-          subscribedIdsRef.current.delete(conv.id);
-        }
-      });
-    };
-  }, [conversations.length]); // Only re-run when number of conversations changes
 
   return (
     <aside className={`fixed left-0 top-0 h-full bg-white shadow-lg z-40 w-60 transition-all duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>

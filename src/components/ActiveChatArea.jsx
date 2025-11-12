@@ -4,9 +4,6 @@ import pusherService from '../services/PusherService';
 
 const API_URL = "https://adminer.palestinesrelief.org/api";
 
-// Global message cache for instant loading
-const messageCache = {};
-
 const ActiveChatArea = ({ 
   conversation, 
   onBack, 
@@ -18,8 +15,7 @@ const ActiveChatArea = ({
 }) => {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([]);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false); // Background refresh indicator
+  const [loading, setLoading] = useState(true);
   const [typing, setTyping] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [isReopening, setIsReopening] = useState(false);
@@ -27,43 +23,29 @@ const ActiveChatArea = ({
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
-  const callbackIdRef = useRef(null);
-  const currentConversationIdRef = useRef(null);
+  const callbackIdRef = useRef(null); // Store callback ID for cleanup
   
   useEffect(() => {
     if (!conversation?.id) return;
     
-    // Clear messages immediately when switching conversations
-    if (currentConversationIdRef.current !== conversation.id) {
-      console.log('🔄 Switching to new conversation, clearing old messages');
-      setMessages([]);
-      setIsInitialLoad(true);
-      currentConversationIdRef.current = conversation.id;
-    }
+    console.log('💬 ActiveChatArea: Loading conversation:', conversation.id);
+    loadMessages();
     
-    // Check cache first for instant loading
-    if (messageCache[conversation.id]) {
-      console.log('⚡ Loading from cache instantly');
-      setMessages(messageCache[conversation.id]);
-      setIsInitialLoad(false);
-      
-      // Then refresh in background
-      loadMessagesInBackground();
-    } else {
-      console.log('📥 No cache, loading fresh');
-      loadMessages();
-    }
-    
-    // Subscribe to Pusher
+    // Subscribe and store the callback ID
     callbackIdRef.current = pusherService.subscribeToConversation(conversation.id, {
       onNewMessage: handleNewMessage,
       onTyping: handleTyping,
       onError: (error) => {
-        console.error('Pusher error:', error);
+        console.error('Pusher error in chat:', error);
       }
     });
     
+    console.log('📡 ActiveChatArea subscribed with ID:', callbackIdRef.current);
+    
     return () => {
+      console.log('🧹 ActiveChatArea cleanup');
+      
+      // Unsubscribe ONLY our callbacks, not the whole channel
       if (callbackIdRef.current) {
         pusherService.unsubscribeFromConversation(conversation.id, callbackIdRef.current);
       }
@@ -82,10 +64,9 @@ const ActiveChatArea = ({
     adjustTextareaHeight();
   }, [message]);
 
-  // Initial load
   const loadMessages = async () => {
     try {
-      setIsInitialLoad(true);
+      setLoading(true);
       
       const response = await axios.get(`${API_URL}/conversations/${conversation.id}`);
       
@@ -93,56 +74,28 @@ const ActiveChatArea = ({
         const newMessages = response.data.messages || [];
         console.log(`✅ Loaded ${newMessages.length} messages`);
         setMessages(newMessages);
-        
-        // Cache for next time
-        messageCache[conversation.id] = newMessages;
       }
     } catch (error) {
       console.error('❌ Error loading messages:', error);
     } finally {
-      setIsInitialLoad(false);
-    }
-  };
-
-  // Background refresh (for cached data)
-  const loadMessagesInBackground = async () => {
-    try {
-      setIsRefreshing(true);
-      
-      const response = await axios.get(`${API_URL}/conversations/${conversation.id}`);
-      
-      if (response.data.status === 'success') {
-        const newMessages = response.data.messages || [];
-        console.log(`🔄 Background refresh: ${newMessages.length} messages`);
-        setMessages(newMessages);
-        
-        // Update cache
-        messageCache[conversation.id] = newMessages;
-      }
-    } catch (error) {
-      console.error('❌ Error refreshing messages:', error);
-    } finally {
-      setIsRefreshing(false);
+      setLoading(false);
     }
   };
 
   const handleNewMessage = (data) => {
-    console.log('💬 New message received:', data);
+    console.log('💬 ActiveChatArea received message:', data);
     
     setMessages(prev => {
       const exists = prev.some(m => m.id === data.id);
       if (exists) return prev;
       
-      const updated = [...prev, data];
-      
-      // Update cache
-      messageCache[conversation.id] = updated;
-      
-      return updated;
+      return [...prev, data];
     });
   };
 
   const handleTyping = (data) => {
+    console.log('📝 ActiveChatArea typing:', data);
+    
     if (data.sender_type === 'visitor') {
       setTyping(data.is_typing);
     }
@@ -187,11 +140,7 @@ const ActiveChatArea = ({
       temp: true
     };
     
-    setMessages(prev => {
-      const updated = [...prev, tempMessage];
-      messageCache[conversation.id] = updated;
-      return updated;
-    });
+    setMessages(prev => [...prev, tempMessage]);
     
     try {
       const response = await axios.post(
@@ -201,11 +150,7 @@ const ActiveChatArea = ({
       
       if (response.data.status === 'success') {
         console.log('✅ Message sent');
-        setMessages(prev => {
-          const updated = prev.filter(m => m.id !== tempMessage.id);
-          messageCache[conversation.id] = updated;
-          return updated;
-        });
+        setMessages(prev => prev.filter(m => m.id !== tempMessage.id));
       }
     } catch (error) {
       console.error('❌ Error sending:', error);
@@ -320,14 +265,6 @@ const ActiveChatArea = ({
               <p className="text-xs text-gray-500">{formatTime(conversation.lastMessageTime)}</p>
             )}
           </div>
-          
-          {/* Background refresh indicator */}
-          {isRefreshing && (
-            <div className="flex items-center ml-2 text-xs text-gray-500">
-              <div className="w-3 h-3 mr-1 border-2 border-gray-400 rounded-full border-t-transparent animate-spin"></div>
-              <span>Updating...</span>
-            </div>
-          )}
         </div>
         
         <div className="flex items-center space-x-2">
@@ -362,7 +299,7 @@ const ActiveChatArea = ({
       </div>
 
       <div className="flex-1 p-4 space-y-3 overflow-y-auto md:p-6">
-        {isInitialLoad ? (
+        {loading ? (
           <div className="flex items-center justify-center py-10">
             <div className="flex flex-col items-center">
               <div className="w-10 h-10 mb-3 border-b-2 border-blue-500 rounded-full animate-spin"></div>

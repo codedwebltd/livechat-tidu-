@@ -27,7 +27,6 @@ const Inbox = () => {
   const [localConversations, setLocalConversations] = useState(conversations);
   const [typingConversations, setTypingConversations] = useState({});
   
-  // Track subscribed conversation IDs to prevent re-subscribing
   const subscribedIdsRef = useRef(new Set());
   
   useEffect(() => {
@@ -52,20 +51,25 @@ const Inbox = () => {
     };
   }, []);
 
-  // Subscribe to conversations - ONLY when new IDs appear, not when data changes
+  // 🔥 FIXED: Subscribe to conversations whenever the list changes
   useEffect(() => {
     if (localConversations.length === 0) return;
     
+    console.log(`📡 INBOX: Checking subscriptions for ${localConversations.length} conversations`);
+    
     localConversations.forEach(conv => {
       // Skip if already subscribed
-      if (subscribedIdsRef.current.has(conv.id)) return;
+      if (subscribedIdsRef.current.has(conv.id)) {
+        console.log(`⏭️ INBOX: Already subscribed to conversation ${conv.id}`);
+        return;
+      }
       
-      console.log(`📡 Subscribing to conversation: ${conv.id}`);
+      console.log(`📡 INBOX: NEW subscription to conversation ${conv.id}`);
       subscribedIdsRef.current.add(conv.id);
       
       pusherService.subscribeToConversation(conv.id, {
         onNewMessage: (message) => {
-          console.log(`💬 Message in ${conv.id}:`, message);
+          console.log(`💬 INBOX: New message in conversation ${conv.id}`, message);
           
           setLocalConversations(prev => prev.map(c => {
             if (c.id === conv.id) {
@@ -81,6 +85,8 @@ const Inbox = () => {
           }));
         },
         onTyping: (data) => {
+          console.log(`📝 INBOX: Typing in conversation ${conv.id}`, data);
+          
           setTypingConversations(prev => ({
             ...prev,
             [conv.id]: data.is_typing
@@ -89,18 +95,18 @@ const Inbox = () => {
       });
     });
     
-    // Cleanup - only unsubscribe from conversations no longer in the list
+    // Cleanup - unsubscribe from conversations no longer in list
     return () => {
       const currentIds = new Set(localConversations.map(c => c.id));
       subscribedIdsRef.current.forEach(id => {
         if (!currentIds.has(id)) {
-          console.log(`🔌 Unsubscribing from conversation: ${id}`);
+          console.log(`🔌 INBOX: Unsubscribing from removed conversation ${id}`);
           pusherService.unsubscribeFromConversation(id);
           subscribedIdsRef.current.delete(id);
         }
       });
     };
-  }, [localConversations.length]); // Only depend on LENGTH, not content
+  }, [localConversations]); // 🔥 FIXED: Depend on the ACTUAL array, not just length
   
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return '';
@@ -203,6 +209,7 @@ const Inbox = () => {
               <button 
                 onClick={handleManualRefresh}
                 className="p-2 transition rounded-lg hover:bg-gray-100"
+                title="Refresh"
                 disabled={loading || tabLoading}
               >
                 <i className={`fas fa-sync-alt text-gray-600 ${(loading || tabLoading) ? 'animate-spin' : ''}`}></i>
