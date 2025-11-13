@@ -35,17 +35,17 @@ const Sidebar = ({ isOpen, onClose, activePage = 'Dashboard', onNavigate = () =>
           <div className="mb-5">
             <p className="px-3 mb-2 text-xs font-semibold tracking-wider text-gray-400 uppercase">MAIN MENU</p>
 
-            <Link
-              to="/"
+            <a 
+              href="/"
               onClick={() => onNavigate('Dashboard')}
               className={`flex items-center px-3 py-2.5 rounded-lg mb-1 ${activePage === 'Dashboard' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'}`}
             >
               <i className="w-5 text-lg fas fa-chart-line"></i>
               <span className="ml-3 font-medium">Dashboard</span>
-            </Link>
+            </a>
 
-            <Link
-              to="/inbox"
+            <a
+              href="/inbox"
               onClick={() => onNavigate('Inbox')}
               className={`flex items-center justify-between px-3 py-2.5 rounded-lg mb-1 ${activePage === 'Inbox' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'}`}
             >
@@ -58,10 +58,10 @@ const Sidebar = ({ isOpen, onClose, activePage = 'Dashboard', onNavigate = () =>
                   {unreadCount}
                 </span>
               )}
-            </Link>
+            </a>
 
-            <Link
-              to="/tickets"
+            <a
+              href="/tickets"
               onClick={() => onNavigate('Tickets')}
               className={`flex items-center justify-between px-3 py-2.5 rounded-lg mb-1 ${activePage === 'Tickets' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'}`}
             >
@@ -70,14 +70,14 @@ const Sidebar = ({ isOpen, onClose, activePage = 'Dashboard', onNavigate = () =>
                 <span className="ml-3 font-medium">Tickets</span>
               </div>
               <span className="bg-blue-100 text-blue-600 text-xs px-2 py-0.5 rounded-full font-semibold">2</span>
-            </Link>
+            </a>
           </div>
 
           <div className="mb-5">
             <p className="px-3 mb-2 text-xs font-semibold tracking-wider text-gray-400 uppercase">CUSTOMER</p>
 
-            <Link
-              to="/visitors"
+            <a
+              href="/visitors"
               onClick={() => onNavigate('Visitors')}
               className={`flex items-center justify-between px-3 py-2.5 rounded-lg mb-1 ${activePage === 'Visitors' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'}`}
             >
@@ -86,7 +86,7 @@ const Sidebar = ({ isOpen, onClose, activePage = 'Dashboard', onNavigate = () =>
                 <span className="ml-3 font-medium">Visitors</span>
               </div>
               <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-            </Link>
+            </a>
 
             <Link
               to="/contacts"
@@ -157,8 +157,8 @@ const Sidebar = ({ isOpen, onClose, activePage = 'Dashboard', onNavigate = () =>
           <div className="mb-5">
             <p className="px-3 mb-2 text-xs font-semibold tracking-wider text-gray-400 uppercase">SYSTEM</p>
 
-            <Link
-              to="/settings"
+            <a
+              href="/settings"
               onClick={() => onNavigate('Settings')}
               className={`flex items-center justify-between px-3 py-2.5 rounded-lg mb-1 ${activePage === 'Settings' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'}`}
             >
@@ -167,16 +167,16 @@ const Sidebar = ({ isOpen, onClose, activePage = 'Dashboard', onNavigate = () =>
                 <span className="ml-3 font-medium">Settings</span>
               </div>
               <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-            </Link>
+            </a>
 
-            <Link
-              to="/widget"
+            <a
+              href="/widget"
               onClick={() => onNavigate('Widget Installation')}
               className={`flex items-center px-3 py-2.5 rounded-lg mb-1 ${activePage === 'Widget Installation' ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'}`}
             >
               <i className="w-5 text-lg fas fa-plug"></i>
               <span className="ml-3 font-medium">Widget</span>
-            </Link>
+            </a>
           </div>
         </div>
       </div>
